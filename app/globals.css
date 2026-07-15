@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #070708;
+  --foreground: #ececed;
 }
 
 @theme inline {
@@ -12,15 +12,120 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient amber glow behind the whole app */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 78% -10%, rgba(251, 191, 36, 0.08), transparent 60%),
+    radial-gradient(50rem 40rem at 10% 110%, rgba(120, 113, 108, 0.06), transparent 60%);
+}
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+::selection {
+  background: rgba(251, 191, 36, 0.25);
+  color: #fff;
+}
+
+/* Thin, subtle scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #26262a transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #26262a;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #34343a;
+}
+
+/* Streaming caret */
+@keyframes tacit-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.tacit-caret::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: #fbbf24;
+  animation: tacit-blink 1s step-start infinite;
+}
+
+/* Entrance animation */
+@keyframes tacit-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tacit-fade {
+  animation: tacit-fade 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes tacit-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.tacit-dot {
+  animation: tacit-pulse 1.4s ease-in-out infinite;
+}
+
+/* Readable prose for streamed answers */
+.prose-tacit {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: #d4d4d6;
+}
+.prose-tacit .p + .p {
+  margin-top: 0.9em;
+}
+.prose-tacit .h {
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+  margin-top: 1.2em;
+  margin-bottom: 0.35em;
+}
+.prose-tacit .h:first-child {
+  margin-top: 0;
+}
+.prose-tacit .li {
+  display: flex;
+  gap: 0.6em;
+  margin-top: 0.4em;
+}
+.prose-tacit .li-marker {
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+.prose-tacit strong {
+  color: #fff;
+  font-weight: 600;
 }

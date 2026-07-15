@@ -1,0 +1,67 @@
+{
+  "documents": [
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-4412", "author": "Raj (VP Product)", "ts": "2024-05-22",
+      "title": "Partner Portal Post-Mortem",
+      "content": "The Partner Portal launch (Jan 2024) was meant to let external payment partners build integrations self-serve. Six months in: 0 external partners have shipped integrations via the portal. API stability issues caused 2 outages during partner testing. Maintenance burden is roughly 25% of the integrations team's capacity. ROI: minimal. Recommendation: kill the project. Redirect the team to fixing API stability and building a closed partner program with manual onboarding. Alternatives considered: (a) pivot to a closed partner program with manual onboarding, (b) fix API stability first then relaunch in Q4. Final status: CANCELLED on 2024-06-15."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-4412-c1", "author": "Jane (Eng Lead)", "ts": "2024-06-10",
+      "title": "Comment on NIMBUSPAY-4412",
+      "content": "I'm going to be blunt: this is burning team velocity for zero return. We're chasing a feature no one wants and our API isn't ready for public exposure. We're burning 30% of integrations team time on this for 0 revenue. I vote kill it."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-4412-c2", "author": "Priya (Tech Lead)", "ts": "2024-06-11",
+      "title": "Comment on NIMBUSPAY-4412",
+      "content": "Confirmed. We learned a lot though — mainly that synchronous integration calls don't scale. Each partner call blocks our thread pool. If we ever do this again, we need async queueing from day one, and the API needs to survive external load first."
+    },
+    {
+      "source": "slack", "source_id": "slack-product-2024-05-20", "author": "Raj (VP Product)", "ts": "2024-05-20",
+      "title": "#product thread: Partner Portal post-launch review",
+      "content": "Raj: Partner Portal post-launch: we've onboarded 0 external partners. The ones we reached out to want manual support, not self-serve. Thoughts? Jane: The API can barely handle our own testing load. I'm hesitant to open it to external partners without serious stability work. We had two timeouts last week during their testing. Raj: Leaning toward killing this and pivoting to 1-1 partnerships. Better ROI. Jane: Kill it. Not worth the maintenance burden. DECISION MADE: Partner Portal cancelled. Key reasons: partners showed no interest in self-serve, API not stable enough for public exposure."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-4520", "author": "Jane (Eng Lead)", "ts": "2024-06-22",
+      "title": "Async Integration Queue Pattern — Architectural Decision",
+      "content": "Post-Partner-Portal: our integrations are all synchronous. One slow partner cascades into timeouts across our system. DECISION: All new integrations must use an async queue. Requests are enqueued, a worker processes them asynchronously, and results return via webhook callback. No synchronous blocking calls to external services in critical paths. Benefits: decouples partner latency from our critical path, better error handling and retries, scales to thousands of partners. This is now the architectural standard for all integrations. Jane: 'Approved. This becomes the standard for all future work. If someone wants to do sync, they need explicit override from me.'"
+    },
+    {
+      "source": "incident", "source_id": "INC-2024-09-12", "author": "Priya (Tech Lead)", "ts": "2024-09-12",
+      "title": "Payments gateway timeout cascade — incident postmortem",
+      "content": "Incident duration: 45 minutes. The Stripe processor hit rate limits; our synchronous payment calls timed out; the failure cascaded through the merchant dashboard. Root cause: legacy synchronous calls to the payment processor — each payment request blocks on the Stripe response, so one slow Stripe response stalls all payments. The async queue pattern (NIMBUSPAY-4520, decided June 2024) would have prevented this, but legacy payment code had not yet been migrated. Resolved by Priya. Lesson: enforce async-only for all critical paths; migrate remaining legacy sync calls."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-4815", "author": "Aditya (Finance)", "ts": "2024-08-28",
+      "title": "Stripe Processor Authorization",
+      "content": "We need a payments processor. Candidates: Stripe ($50k/year, mature, 4-week integration, strong fraud detection), Razorpay ($25k/year, local, 8-week integration), PayU ($35k/year, legacy but stable, 6-week integration). Analysis: speed to market matters more than cost at this stage. DECISION: Authorize Stripe as primary processor, Razorpay as fallback. Budget approved: $50k for FY2024. Raj negotiated a 10% discount. Decided by Aditya (Finance) and Raj (Product)."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-3101", "author": "Priya (Tech Lead)", "ts": "2024-02-14",
+      "title": "Migrate merchant dashboard to server-side rendering",
+      "content": "Dashboard load times exceed 4s for merchants on slow connections. DECISION: migrate the merchant dashboard to server-side rendering. Alternatives considered: client-side optimization with code splitting (rejected: only gets us to ~2.5s), full rewrite in a lighter framework (rejected: too costly). Outcome: shipped in April 2024, median load time now 1.2s. Decided by Priya, approved by Jane."
+    },
+    {
+      "source": "slack", "source_id": "slack-eng-2024-03-08", "author": "Jane (Eng Lead)", "ts": "2024-03-08",
+      "title": "#engineering thread: on-call rotation change",
+      "content": "Jane: Proposal — move from weekly to 3-day on-call rotations. Weekly is burning people out. Priya: Support. Shorter rotations, fresher on-calls. Dev A: Will this mess with weekend coverage? Jane: Weekend counts as one rotation slot with a comp day after. DECISION: 3-day on-call rotations adopted starting April. Decided by Jane with team consensus."
+    },
+    {
+      "source": "jira", "source_id": "NIMBUSPAY-5100", "author": "Raj (VP Product)", "ts": "2024-12-10",
+      "title": "PROPOSAL: Partner Marketplace",
+      "content": "Proposal: Build a marketplace where partners can list payment solutions. Partners would get self-serve onboarding with no manual review, build integrations for free under a revenue-share model, and we would expose our APIs publicly for partners to integrate against. Rationale: expand the partner ecosystem beyond our direct integrations; revenue from higher volume. Timeline: launch by Q1 2025, marketplace platform estimated at 8 weeks to MVP. Status: in planning."
+    }
+  ],
+  "interview_triggers": [
+    {
+      "trigger_type": "incident_resolved",
+      "trigger_ref": "INC-2024-09-12",
+      "person": "Priya (Tech Lead)"
+    }
+  ],
+  "demo_interview_answers": [
+    "Root cause was the legacy synchronous calls to Stripe. Each payment request blocks on Stripe's response, so when Stripe slowed down, every payment in the system stalled behind it.",
+    "I first tried raising the client timeout — made it worse, just held threads longer. The actual fix was rerouting payment traffic through the async queue we built in June and letting the retry logic drain the backlog.",
+    "Finish migrating the remaining legacy payment paths to the async queue pattern (NIMBUSPAY-4520). About 30% of payment code still makes direct sync calls. Until that's done this exact incident can recur.",
+    "Watch for thread pool saturation alerts on the payments service — that was the earliest signal, about 10 minutes before merchant-visible failures started."
+  ]
+}
