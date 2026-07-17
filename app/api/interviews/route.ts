@@ -3,6 +3,7 @@ import { getDb, InterviewRow, DocumentRow } from "@/lib/db";
 import { search, formatChunks } from "@/lib/retrieval";
 import { generateJSON, friendlyGeminiError } from "@/lib/gemini";
 import { interviewQuestionsPrompt } from "@/lib/prompts";
+import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +19,14 @@ function describeTrigger(row: InterviewRow): string {
 export async function GET() {
   try {
     const db = getDb();
-    const rows = db
-      .prepare("SELECT * FROM interviews ORDER BY id ASC")
-      .all() as InterviewRow[];
+    const session = await getSession();
+    const rows = (
+      session.projectId
+        ? db
+            .prepare("SELECT * FROM interviews WHERE project_id = ? ORDER BY id ASC")
+            .all(session.projectId)
+        : db.prepare("SELECT * FROM interviews ORDER BY id ASC").all()
+    ) as InterviewRow[];
 
     const update = db.prepare("UPDATE interviews SET questions = ? WHERE id = ?");
 
@@ -36,7 +42,7 @@ export async function GET() {
           const query = triggerDoc
             ? `${triggerDoc.title}\n${triggerDoc.content}`
             : (row.trigger_ref ?? "");
-          const related = await search(query, 4);
+          const related = await search(query, 4, session.projectId);
 
           const result = await generateJSON(
             interviewQuestionsPrompt(
@@ -57,6 +63,7 @@ export async function GET() {
       }
     }
 
+    const memberName = db.prepare("SELECT name FROM members WHERE id = ?");
     const interviews = rows.map((r) => ({
       id: r.id,
       trigger_type: r.trigger_type,
@@ -65,6 +72,10 @@ export async function GET() {
       questions: r.questions ? JSON.parse(r.questions) : [],
       answers: r.answers ? JSON.parse(r.answers) : [],
       status: r.status,
+      answered_by: r.answered_by,
+      answered_by_name: r.answered_by
+        ? ((memberName.get(r.answered_by) as { name: string } | undefined)?.name ?? null)
+        : null,
       created_at: r.created_at,
     }));
 

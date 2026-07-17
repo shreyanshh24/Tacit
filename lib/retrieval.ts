@@ -10,6 +10,8 @@ export interface RetrievedDoc {
   title: string | null;
   content: string;
   score: number;
+  linked_jira_key: string | null;
+  linked_jira_url: string | null;
 }
 
 /** Cosine similarity. Vectors from embed() are normalized, so this is a dot
@@ -27,17 +29,43 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-/** Brute-force vector search over all documents (dataset is tiny). */
-export async function search(query: string, topK = 8): Promise<RetrievedDoc[]> {
+/** Brute-force vector search over documents (optionally scoped to a project). */
+export async function search(
+  query: string,
+  topK = 8,
+  projectId?: number | null
+): Promise<RetrievedDoc[]> {
   const queryVec = await embed(query);
-  return searchWithVector(queryVec, topK);
+  return searchWithVector(queryVec, topK, projectId);
 }
 
-export function searchWithVector(queryVec: number[], topK = 8): RetrievedDoc[] {
+/**
+ * Search using a precomputed query embedding. Loads document embeddings,
+ * computes cosine similarity, returns the top K sorted by score.
+ */
+export function searchDocuments(
+  queryEmbedding: number[],
+  topK = 8,
+  projectId?: number | null
+): RetrievedDoc[] {
+  return searchWithVector(queryEmbedding, topK, projectId);
+}
+
+export function searchWithVector(
+  queryVec: number[],
+  topK = 8,
+  projectId?: number | null
+): RetrievedDoc[] {
   const db = getDb();
-  const rows = db
-    .prepare("SELECT * FROM documents WHERE embedding IS NOT NULL")
-    .all() as DocumentRow[];
+  const rows = (
+    projectId != null
+      ? db
+          .prepare(
+            "SELECT * FROM documents WHERE embedding IS NOT NULL AND project_id = ?"
+          )
+          .all(projectId)
+      : db.prepare("SELECT * FROM documents WHERE embedding IS NOT NULL").all()
+  ) as DocumentRow[];
 
   const scored = rows.map((row) => {
     const vec = JSON.parse(row.embedding as string) as number[];
@@ -50,6 +78,8 @@ export function searchWithVector(queryVec: number[], topK = 8): RetrievedDoc[] {
       title: row.title,
       content: row.content,
       score: cosineSimilarity(queryVec, vec),
+      linked_jira_key: row.linked_jira_key ?? null,
+      linked_jira_url: row.linked_jira_url ?? null,
     };
   });
 
@@ -60,9 +90,9 @@ export function searchWithVector(queryVec: number[], topK = 8): RetrievedDoc[] {
 /** Format retrieved docs into a context block for the LLM prompts. */
 export function formatChunks(docs: RetrievedDoc[]): string {
   return docs
-    .map(
-      (d) =>
-        `[${d.source_id ?? d.id}] (${d.title ?? "untitled"} — ${d.author ?? "unknown"}, ${d.ts ?? "n/a"})\n${d.content}`
-    )
+    .map((d) => {
+      const jira = d.linked_jira_key ? ` [linked Jira: ${d.linked_jira_key}]` : "";
+      return `[${d.source_id ?? d.id}] (${d.title ?? "untitled"} — ${d.author ?? "unknown"}, ${d.ts ?? "n/a"})${jira}\n${d.content}`;
+    })
     .join("\n\n---\n\n");
 }

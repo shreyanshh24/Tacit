@@ -8,6 +8,8 @@ export interface StreamSource {
   source?: string | null;
   content?: string | null;
   score?: number;
+  linked_jira_key?: string | null;
+  linked_jira_url?: string | null;
 }
 
 /**

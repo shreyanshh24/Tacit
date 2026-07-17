@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useSources } from "@/components/SourcesProvider";
 import CitationText from "@/components/CitationText";
 import { consumeStream, StreamSource } from "@/components/streamClient";
+import ConnectJira from "@/components/ConnectJira";
+import { useSession } from "@/components/SessionProvider";
 
 const EXAMPLES = [
   "Why did we kill the Partner Portal?",
@@ -14,6 +16,8 @@ const EXAMPLES = [
 
 export default function MemoryPage() {
   const { register, open } = useSources();
+  const { project } = useSession();
+  const isSample = (project?.name ?? "").toLowerCase().startsWith("sample");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<StreamSource[]>([]);
@@ -104,7 +108,9 @@ export default function MemoryPage() {
         </button>
       </form>
 
-      {!asked && (
+      <ConnectJira />
+
+      {!asked && isSample && (
         <div className="mt-7">
           <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-neutral-600">
             Try asking
@@ -122,6 +128,13 @@ export default function MemoryPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {!asked && !isSample && (
+        <p className="mt-7 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-4 text-[13px] text-neutral-500">
+          This project&apos;s memory starts empty. Connect Jira above or capture a doc, then ask
+          about any decision — answers will cite the source and its linked ticket.
+        </p>
       )}
 
       {error && (
@@ -163,6 +176,11 @@ export default function MemoryPage() {
                     <span className="max-w-[220px] truncate text-xs text-neutral-400 group-hover:text-neutral-200">
                       {s.title}
                     </span>
+                    {s.linked_jira_key && (
+                      <span className="rounded bg-blue-400/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-300">
+                        {s.linked_jira_key}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

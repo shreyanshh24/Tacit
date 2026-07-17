@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { generateJSON, friendlyGeminiError } from "@/lib/gemini";
 import { assumptionsPrompt } from "@/lib/prompts";
+import { logActivity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +52,12 @@ export async function POST(req: Request) {
     assumptions.sort(
       (a, b) => (riskRank[a.risk] ?? 1) - (riskRank[b.risk] ?? 1)
     );
+
+    await logActivity({
+      type: "assumptions",
+      title: title?.trim() || "Untitled plan",
+      detail: `${assumptions.length} assumptions surfaced`,
+    });
 
     return NextResponse.json({ ok: true, plan_id: planId, assumptions });
   } catch (e) {

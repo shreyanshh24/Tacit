@@ -9,6 +9,8 @@ export interface SourceDoc {
   ts?: string | null;
   source?: string | null;
   content?: string | null;
+  linked_jira_key?: string | null;
+  linked_jira_url?: string | null;
 }
 
 interface SourcesContextValue {
@@ -91,6 +93,16 @@ function SlideOver({ doc, onClose }: { doc: SourceDoc | null; onClose: () => voi
                 <p className="mt-1 text-xs text-neutral-500">
                   {doc.author} {doc.ts ? `· ${doc.ts}` : ""}
                 </p>
+                {doc.linked_jira_key && doc.linked_jira_url && (
+                  <a
+                    href={doc.linked_jira_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 rounded-md bg-blue-400/15 px-2 py-0.5 text-[11px] font-medium text-blue-300 hover:bg-blue-400/25"
+                  >
+                    View in Jira: {doc.linked_jira_key} ↗
+                  </a>
+                )}
               </div>
               <button
                 onClick={onClose}

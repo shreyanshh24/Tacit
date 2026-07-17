@@ -8,7 +8,11 @@ export const maxDuration = 300;
 export async function POST() {
   try {
     const result = await runIngest();
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({
+      success: true,
+      documentsInserted: result.documents,
+      interviewsInserted: result.interviews,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

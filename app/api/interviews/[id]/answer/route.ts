@@ -3,6 +3,8 @@ import { getDb, InterviewRow } from "@/lib/db";
 import { generateJSON, friendlyGeminiError } from "@/lib/gemini";
 import { embed } from "@/lib/embeddings";
 import { interviewSynthesisPrompt } from "@/lib/prompts";
+import { logActivity } from "@/lib/activity";
+import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +36,11 @@ export async function POST(
       return NextResponse.json({ error: "Interview not found" }, { status: 404 });
     }
 
-    // Persist answers.
-    db.prepare("UPDATE interviews SET answers = ?, status = ? WHERE id = ?").run(
-      JSON.stringify(answers),
-      "answered",
-      interviewId
-    );
+    // Persist answers, attributing them to the current member.
+    const session = await getSession();
+    db.prepare(
+      "UPDATE interviews SET answers = ?, status = ?, answered_by = ? WHERE id = ?"
+    ).run(JSON.stringify(answers), "answered", session.memberId, interviewId);
 
     // Synthesize a durable knowledge document.
     const person = row.person ?? "the responder";
@@ -64,8 +65,8 @@ export async function POST(
     // Replace any prior synthesis for idempotency.
     db.prepare("DELETE FROM documents WHERE source_id = ?").run(sourceId);
     db.prepare(
-      `INSERT INTO documents (source, source_id, author, ts, title, content, embedding)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO documents (source, source_id, author, ts, title, content, embedding, project_id, member_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       "interview",
       sourceId,
@@ -73,13 +74,22 @@ export async function POST(
       new Date().toISOString().slice(0, 10),
       title,
       documentText,
-      embedding
+      embedding,
+      row.project_id ?? session.projectId,
+      session.memberId
     );
 
     db.prepare("UPDATE interviews SET status = ? WHERE id = ?").run(
       "synthesized",
       interviewId
     );
+
+    await logActivity({
+      type: "interview",
+      title: `Interview answered: ${row.trigger_ref ?? "incident"}`,
+      detail: `Knowledge captured as ${sourceId} — "${title}"`,
+      ref: sourceId,
+    });
 
     return NextResponse.json({
       ok: true,

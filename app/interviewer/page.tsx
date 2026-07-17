@@ -10,6 +10,7 @@ interface Interview {
   questions: string[];
   answers: { q: string; a: string }[];
   status: "pending" | "answered" | "synthesized";
+  answered_by_name?: string | null;
 }
 
 // Demo aids: subtle placeholder hints the presenter can paste.
@@ -114,6 +115,7 @@ export default function InterviewerPage() {
                 </div>
                 <p className="mt-1 text-xs text-neutral-500">
                   Interviewee: {iv.person} · {iv.questions.length} questions
+                  {iv.answered_by_name ? ` · answered by ${iv.answered_by_name}` : ""}
                 </p>
               </div>
               <span className="text-neutral-600">›</span>
@@ -301,6 +303,7 @@ function PriorSynthesis({ interview }: { interview: Interview }) {
         <span className="text-emerald-400">✓</span>
         <p className="text-sm font-medium text-emerald-200">
           Already synthesized into company memory
+          {interview.answered_by_name ? ` · answered by ${interview.answered_by_name}` : ""}
         </p>
       </div>
       <div className="space-y-4">
