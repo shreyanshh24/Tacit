@@ -56,3 +56,57 @@ export async function consumeStream(
     onDelta(text);
   }
 }
+
+export const META_PREFIX = "__META__";
+
+export interface StreamMeta {
+  mode: string;
+  conversationId: number | null;
+  sources: StreamSource[] | null;
+  cards: { type: "assumptions" | "decisions"; items: unknown[] } | null;
+}
+
+/**
+ * Consume the unified chat stream: first line `__META__<json>`, then streamed
+ * assistant text. Calls onMeta once, onDelta per chunk.
+ */
+export async function consumeMetaStream(
+  res: Response,
+  {
+    onMeta,
+    onDelta,
+  }: { onMeta: (m: StreamMeta) => void; onDelta: (text: string) => void }
+): Promise<void> {
+  if (!res.body) throw new Error("No response body");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let metaParsed = false;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+
+    if (!metaParsed) {
+      buffer += text;
+      const nl = buffer.indexOf("\n");
+      if (nl === -1) continue;
+      const firstLine = buffer.slice(0, nl);
+      if (firstLine.startsWith(META_PREFIX)) {
+        try {
+          onMeta(JSON.parse(firstLine.slice(META_PREFIX.length)));
+        } catch {
+          /* ignore malformed meta header */
+        }
+      }
+      const rest = buffer.slice(nl + 1);
+      metaParsed = true;
+      buffer = "";
+      if (rest) onDelta(rest);
+      continue;
+    }
+
+    onDelta(text);
+  }
+}

@@ -34,7 +34,11 @@ export async function POST(req: Request) {
     }
 
     const conn = project
-      ? { baseUrl: project.jira_base_url, email: project.jira_email, token: project.jira_token }
+      ? {
+          baseUrl: project.jira_base_url ?? undefined,
+          email: project.jira_email ?? undefined,
+          token: project.jira_token ?? undefined,
+        }
       : undefined;
     const issues = await fetchJiraIssues(projectKey, conn);
     // Upsert by source_id so re-importing the same project doesn't duplicate.

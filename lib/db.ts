@@ -50,6 +50,51 @@ function applyMigrations(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(activity_id, member_id)
     );
+
+    -- v2: unified Chat -------------------------------------------------------
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER,
+      member_id INTEGER,
+      title TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      role TEXT NOT NULL,            -- 'user' | 'assistant'
+      mode TEXT,                     -- classified/forced intent for this turn
+      content TEXT,
+      sources TEXT,                  -- JSON array of source metadata
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- v2: Agents -------------------------------------------------------------
+    CREATE TABLE IF NOT EXISTS agents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER,
+      type TEXT NOT NULL,            -- 'scrum' | 'tester' | 'pr_security'
+      name TEXT,
+      config TEXT,                   -- JSON config (branch, ticket, pr, transcripts…)
+      enabled INTEGER DEFAULT 1,
+      schedule_cron TEXT,            -- cron expression for scheduled agents
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'queued',  -- 'queued' | 'running' | 'done' | 'failed'
+      trigger TEXT,                  -- 'manual' | 'schedule'
+      input TEXT,                    -- JSON snapshot of the config used
+      started_at TEXT,
+      finished_at TEXT,
+      log TEXT,                      -- streamed agent transcript/log
+      result TEXT,                   -- JSON structured result
+      jira_ref TEXT,                 -- ticket key it posted to
+      pr_ref TEXT                    -- PR number/url it posted to
+    );
   `);
   migrationsApplied = true;
 }
@@ -269,4 +314,49 @@ export interface CommentRow {
   member_id: number | null;
   body: string;
   created_at: string;
+}
+
+export interface ChatConversationRow {
+  id: number;
+  project_id: number | null;
+  member_id: number | null;
+  title: string | null;
+  created_at: string;
+}
+
+export interface ChatMessageRow {
+  id: number;
+  conversation_id: number;
+  role: string;
+  mode: string | null;
+  content: string | null;
+  sources: string | null;
+  created_at: string;
+}
+
+export type AgentType = "scrum" | "tester" | "pr_security";
+
+export interface AgentRow {
+  id: number;
+  project_id: number | null;
+  type: string;
+  name: string | null;
+  config: string | null;
+  enabled: number;
+  schedule_cron: string | null;
+  created_at: string;
+}
+
+export interface AgentRunRow {
+  id: number;
+  agent_id: number;
+  status: string;
+  trigger: string | null;
+  input: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  log: string | null;
+  result: string | null;
+  jira_ref: string | null;
+  pr_ref: string | null;
 }

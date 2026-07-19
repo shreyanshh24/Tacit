@@ -10,6 +10,13 @@ export interface JiraConnection {
   token: string;
 }
 
+/** Loosely-typed connection input (fields may be null when read from the DB). */
+export type ConnInput = {
+  baseUrl?: string | null;
+  email?: string | null;
+  token?: string | null;
+};
+
 export interface JiraDocument {
   source: "jira";
   source_id: string;
@@ -25,7 +32,7 @@ export interface JiraIssueOption {
   url: string;
 }
 
-function resolveConn(conn?: Partial<JiraConnection> | null): JiraConnection {
+function resolveConn(conn?: ConnInput | null): JiraConnection {
   return {
     baseUrl: (conn?.baseUrl || process.env.JIRA_BASE_URL || "").replace(/\/$/, ""),
     email: conn?.email || process.env.JIRA_EMAIL || "",
@@ -137,7 +144,7 @@ async function jiraGet(
 /** Lightweight list of issues (key + summary) for a ticket picker. */
 export async function fetchJiraIssueList(
   projectKey: string,
-  conn?: Partial<JiraConnection> | null
+  conn?: ConnInput | null
 ): Promise<JiraIssueOption[]> {
   const c = resolveConn(conn);
   assertConn(c);
@@ -153,10 +160,89 @@ export async function fetchJiraIssueList(
   }));
 }
 
+/** Build a minimal ADF document from plain text (one paragraph per line). */
+function textToAdf(text: string) {
+  const lines = text.split("\n");
+  return {
+    type: "doc",
+    version: 1,
+    content: lines.map((line) => ({
+      type: "paragraph",
+      content: line ? [{ type: "text", text: line }] : [],
+    })),
+  };
+}
+
+/** Post a comment to a Jira issue. Returns the created comment id. */
+export async function jiraComment(
+  issueKey: string,
+  body: string,
+  conn?: ConnInput | null
+): Promise<{ id: string; url: string }> {
+  const c = resolveConn(conn);
+  assertConn(c);
+  const key = issueKey.trim().toUpperCase();
+  const res = await fetch(`${c.baseUrl}/rest/api/3/issue/${key}/comment`, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader(c),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body: textToAdf(body) }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Jira comment failed ${res.status}: ${t.slice(0, 250)}`);
+  }
+  const data = await res.json();
+  return { id: data.id, url: jiraIssueUrl(key, c.baseUrl) };
+}
+
+/** Transition a Jira issue to a status by name (e.g. "In Progress", "Done"). */
+export async function jiraTransition(
+  issueKey: string,
+  toStatus: string,
+  conn?: ConnInput | null
+): Promise<void> {
+  const c = resolveConn(conn);
+  assertConn(c);
+  const key = issueKey.trim().toUpperCase();
+  const headers = {
+    Authorization: authHeader(c),
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const listRes = await fetch(`${c.baseUrl}/rest/api/3/issue/${key}/transitions`, {
+    headers,
+  });
+  if (!listRes.ok) {
+    throw new Error(`Jira transitions lookup failed ${listRes.status}`);
+  }
+  const data = await listRes.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const match = (data.transitions ?? []).find(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (t: any) => t.name?.toLowerCase() === toStatus.toLowerCase()
+  );
+  if (!match) {
+    throw new Error(`No transition to "${toStatus}" available for ${key}`);
+  }
+  const res = await fetch(`${c.baseUrl}/rest/api/3/issue/${key}/transitions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ transition: { id: match.id } }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Jira transition failed ${res.status}: ${t.slice(0, 250)}`);
+  }
+}
+
 /** Fetch up to 50 issues for a project and map them to documents. */
 export async function fetchJiraIssues(
   projectKey: string,
-  conn?: Partial<JiraConnection> | null
+  conn?: ConnInput | null
 ): Promise<JiraDocument[]> {
   const c = resolveConn(conn);
   assertConn(c);

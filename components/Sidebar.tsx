@@ -2,20 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "./SessionProvider";
 
 const NAV = [
-  { href: "/", label: "Memory", desc: "Ask about any decision", icon: MemoryIcon },
-  { href: "/assumptions", label: "Assumptions", desc: "Surface hidden bets", icon: AssumptionsIcon },
-  { href: "/foresight", label: "Foresight", desc: "Grounded pre-mortems", icon: ForesightIcon },
-  { href: "/interviewer", label: "Interviewer", desc: "Capture what's unwritten", icon: InterviewerIcon },
-  { href: "/capture", label: "Capture", desc: "Upload docs & link tickets", icon: CaptureIcon },
-  { href: "/decisions", label: "Decisions", desc: "Extracted decision log", icon: DecisionsIcon },
-  { href: "/activity", label: "Activity", desc: "Team feed & comments", icon: ActivityIcon },
-  { href: "/settings", label: "Settings", desc: "Members, roles & danger zone", icon: SettingsIcon },
+  { href: "/", label: "Chat", desc: "Ask, analyze, capture — one place", icon: ChatIcon },
+  { href: "/agents", label: "Agents", desc: "Autonomous agents for this project", icon: AgentsIcon },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { team, project } = useSession();
 
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0c]/80 px-3.5 py-6 backdrop-blur-xl">
@@ -35,7 +31,7 @@ export default function Sidebar() {
 
       <nav className="flex flex-col gap-1">
         {NAV.map(({ href, label, desc, icon: Icon }) => {
-          const active = pathname === href;
+          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -71,76 +67,38 @@ export default function Sidebar() {
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
           <div className="flex items-center gap-2">
             <span className="tacit-dot h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <p className="text-[11px] text-neutral-500">
-              Connected org
-            </p>
+            <p className="text-[11px] text-neutral-500">Connected workspace</p>
           </div>
-          <p className="mt-1 text-[13px] font-medium text-neutral-200">NimbusPay</p>
+          <p className="mt-1 text-[13px] font-medium text-neutral-200">
+            {project?.name ?? team?.name ?? "Workspace"}
+          </p>
         </div>
       </div>
     </aside>
   );
 }
 
-function MemoryIcon({ className = "" }: { className?: string }) {
+function ChatIcon({ className = "" }: { className?: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M4 5h16v11H8l-4 3V5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M8 9.5h8M8 12.5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
-function AssumptionsIcon({ className = "" }: { className?: string }) {
+
+function AgentsIcon({ className = "" }: { className?: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 3l9 16H3l9-16z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M12 10v4M12 16.5v.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-function ForesightIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-function InterviewerIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M4 5h16v11H8l-4 3V5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function ActivityIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M3 12h4l2 6 4-14 2 8h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function CaptureIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 15V4m0 0L8 8m4-4l4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-function DecisionsIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-function SettingsIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={className}>
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2l-.4-2.6H8.9l-.4 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 000 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2l.4 2.6h4.2l.4-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <rect x="5" y="8" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 8V4M9 4h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="9.5" cy="12.5" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="12.5" r="1" fill="currentColor" />
     </svg>
   );
 }

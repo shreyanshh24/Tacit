@@ -1,11 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useSession } from "./SessionProvider";
+
+const TOP_LINKS = [
+  { href: "/decisions", label: "Decisions" },
+  { href: "/interviewer", label: "Interviewer" },
+  { href: "/activity", label: "Activity" },
+  { href: "/settings", label: "Settings" },
+];
 
 export default function TopBar() {
   const { team, member, project, isOwner, setSession, logout } = useSession();
   const [menu, setMenu] = useState(false);
+  const pathname = usePathname();
 
   const initials = (member?.name ?? "?")
     .split(" ")
@@ -37,6 +47,25 @@ export default function TopBar() {
           </span>
         )}
       </div>
+
+      <nav className="mr-2 hidden items-center gap-1 sm:flex">
+        {TOP_LINKS.map((l) => {
+          const active = pathname.startsWith(l.href);
+          return (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                active
+                  ? "bg-white/[0.06] text-amber-300"
+                  : "text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
+              }`}
+            >
+              {l.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <div className="relative">
         <button
