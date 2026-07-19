@@ -6,14 +6,27 @@ const JSON_CONTRACT = `IMPORTANT OUTPUT FORMAT: After you finish the work, your 
 
 export function scrumPrompt(opts: {
   transcript: string;
-  ticketKey: string;
   transcriptName: string;
+  tickets: { key: string; text: string }[];
 }): string {
+  const ticketBlock = opts.tickets
+    .map(
+      (t) =>
+        `### ${t.key}\n${(t.text || "(no Jira context available)").slice(0, 1500)}`
+    )
+    .join("\n\n");
+  const keyList = opts.tickets.map((t) => t.key).join(", ");
+
   return `You are the Daily Scrum agent for the CRM360 project. You have a working clone of the repository as your current directory (read its docs/ and code to ground yourself).
 
-Below is today's standup transcript ("${opts.transcriptName}"). Read it, then cross-check what was discussed against the repository (branches/docs/code you can see). Focus on work relevant to Jira ticket ${opts.ticketKey}.
+Below is today's standup transcript ("${opts.transcriptName}"). It references MULTIPLE Jira tickets. The tickets mentioned — and the ONLY ones you may update — are: ${keyList}.
 
-Produce a concise progress update comment to post on ${opts.ticketKey}: what moved forward, blockers raised, and any decision or risk mentioned. Ground claims in the transcript and repo; do not invent status.
+For EACH of those tickets, produce a concise progress-update comment based ONLY on what the transcript says about that specific ticket (cross-checked against the repo where relevant): what moved forward, blockers raised, decisions or risks. Do NOT invent status, and do NOT produce an update for a ticket the transcript says nothing about — skip it instead.
+
+TICKETS (with their current Jira context):
+"""
+${ticketBlock}
+"""
 
 TRANSCRIPT:
 """
@@ -23,9 +36,12 @@ ${opts.transcript.slice(0, 8000)}
 ${JSON_CONTRACT}
 The JSON must be:
 {
-  "summary": "one-line summary of the standup as it relates to ${opts.ticketKey}",
-  "comment": "the markdown comment to post on the Jira ticket"
-}`;
+  "summary": "one-line summary of the standup across all tickets",
+  "updates": [
+    { "ticketKey": "${opts.tickets[0]?.key ?? "CRM360-1"}", "summary": "one-line status for this ticket", "comment": "the markdown comment to post on this ticket" }
+  ]
+}
+Only include a ticket in "updates" if the transcript actually discusses it.`;
 }
 
 export function testerPrompt(opts: {
@@ -42,8 +58,18 @@ ${opts.ticketText.slice(0, 4000)}
 
 Steps:
 1. Explore the repo (Read/Grep) to find the code relevant to this ticket.
-2. Install dependencies if needed and RUN the test suite (e.g. \`npm install\` then \`npx jest\`). If useful, add or extend test cases that exercise the ticket's behaviour, and run them.
-3. Judge whether the ticket's requirements are met based on ACTUAL test results (not assumptions).
+2. Derive a list of 5–8 concrete behaviours to test from the ticket's acceptance criteria.
+3. Install dependencies if needed, write/extend tests for those behaviours, and RUN them (e.g. \`npm install\` then \`npx jest\`).
+4. Judge whether the ticket's requirements are met based on ACTUAL test results (not assumptions).
+
+LIVE PROGRESS MARKERS — a non-technical dashboard renders each test as a card, so you MUST emit these markers, each on ITS OWN LINE, in your normal messages (NOT inside the final JSON):
+- Once, right after step 2, list every test you will run:
+  TEST_PLAN: ["Create a new contact", "Reject an invalid email address", "Find duplicate contacts", "Merge two duplicate contacts", "Only the owner can read a contact"]
+  (Use short, plain-English names a non-engineer understands — describe the behaviour, not the function name.)
+- Then, after you know each test's outcome, emit one line per test:
+  TEST_RESULT: {"name":"Create a new contact","status":"pass","detail":"Created a contact and got back an id."}
+  TEST_RESULT: {"name":"Merge two duplicate contacts","status":"fail","detail":"No merge function exists — the behaviour is not implemented."}
+  The "name" MUST exactly match a name from TEST_PLAN. "status" is "pass" or "fail". "detail" is ONE short plain-English sentence. Emit a TEST_RESULT for EVERY item in TEST_PLAN.
 
 ${JSON_CONTRACT}
 The JSON must be:

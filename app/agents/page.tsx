@@ -1,25 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type AgentType = "scrum" | "tester" | "pr_security";
-
-interface RunResult {
-  verdict?: string;
-  severity?: string;
-  summary?: string;
-  tests?: string;
-  comment?: string;
-  error?: string;
-  raw?: string;
-  findings?: { title?: string; severity?: string; location?: string; detail?: string }[];
-}
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AgentType,
+  TYPE_LABEL,
+  TYPE_DESC,
+  StatusBadge,
+  Badge,
+  sevTone,
+  RunResult,
+} from "@/components/agentUi";
 
 interface LastRun {
   id: number;
   status: string;
-  started_at?: string;
-  finished_at?: string;
   result: RunResult | null;
   jira_ref: string | null;
   pr_ref: string | null;
@@ -35,47 +30,20 @@ interface Agent {
   last_run: LastRun | null;
 }
 
-const TYPE_LABEL: Record<AgentType, string> = {
-  scrum: "Daily Scrum",
-  tester: "Ticket Tester",
-  pr_security: "PR Security Review",
-};
-
-const TYPE_DESC: Record<AgentType, string> = {
-  scrum: "Reads a standup transcript, checks the repo, and comments progress on a Jira ticket — daily.",
-  tester: "Clones a branch, runs the ticket's tests, and posts a pass/fail verdict to Jira.",
-  pr_security: "Reviews a PR's diff for vulnerabilities and posts a security report on the PR.",
-};
-
 export default function AgentsPage() {
+  const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
-  const [runningId, setRunningId] = useState<number | null>(null);
-  const [logs, setLogs] = useState<Record<number, string>>({});
 
-  async function load() {
-    setLoading(true);
+  const load = useCallback(async () => {
     const r = await fetch("/api/agents").then((x) => x.json());
     setAgents(r.agents ?? []);
     setLoading(false);
-  }
+  }, []);
   useEffect(() => {
     load();
-  }, []);
-
-  async function runNow(id: number) {
-    setRunningId(id);
-    try {
-      const r = await fetch(`/api/agents/${id}/run`, { method: "POST" }).then((x) => x.json());
-      if (r.run?.log) setLogs((l) => ({ ...l, [id]: r.run.log }));
-      await load();
-    } catch (e) {
-      alert("Run failed: " + (e as Error).message);
-    } finally {
-      setRunningId(null);
-    }
-  }
+  }, [load]);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -94,7 +62,15 @@ export default function AgentsPage() {
         </button>
       </div>
 
-      {showNew && <NewAgentForm onCreated={() => { setShowNew(false); load(); }} />}
+      {showNew && (
+        <NewAgentForm
+          onCreated={(newId) => {
+            setShowNew(false);
+            if (newId) router.push(`/agents/${newId}`);
+            else load();
+          }}
+        />
+      )}
 
       <div className="mt-6 space-y-3">
         {loading ? (
@@ -106,9 +82,8 @@ export default function AgentsPage() {
             <AgentCard
               key={a.id}
               agent={a}
-              running={runningId === a.id}
-              log={logs[a.id]}
-              onRun={() => runNow(a.id)}
+              onOpen={() => router.push(`/agents/${a.id}`)}
+              onRun={() => router.push(`/agents/${a.id}?run=1`)}
             />
           ))
         )}
@@ -119,31 +94,37 @@ export default function AgentsPage() {
 
 function AgentCard({
   agent,
-  running,
-  log,
+  onOpen,
   onRun,
 }: {
   agent: Agent;
-  running: boolean;
-  log?: string;
+  onOpen: () => void;
   onRun: () => void;
 }) {
-  const [showLog, setShowLog] = useState(false);
   const run = agent.last_run;
   const res = run?.result;
+  const watchInfo =
+    agent.type === "pr_security"
+      ? `watching ${String(agent.config.baseBranch || agent.config.branch || "main")}`
+      : "";
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <button onClick={onOpen} className="min-w-0 text-left">
           <div className="flex items-center gap-2">
             <span className="rounded-md bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
               {TYPE_LABEL[agent.type]}
             </span>
-            <span className="text-sm font-medium text-white">{agent.name}</span>
+            <span className="text-sm font-medium text-white hover:underline">{agent.name}</span>
             {agent.schedule_cron && (
               <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-neutral-400">
                 ⏱ {agent.schedule_cron}
+              </span>
+            )}
+            {watchInfo && (
+              <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300">
+                👀 {watchInfo}
               </span>
             )}
           </div>
@@ -152,86 +133,54 @@ function AgentCard({
               .map(([k, v]) => `${k}: ${v}`)
               .join(" · ") || TYPE_DESC[agent.type]}
           </p>
-        </div>
+        </button>
         <button
           onClick={onRun}
-          disabled={running}
-          className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-200 hover:bg-white/5 disabled:opacity-50"
+          className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-200 hover:bg-white/5"
         >
-          {running ? "Running…" : "Run now"}
+          Run now
         </button>
       </div>
 
-      {running && (
-        <p className="mt-3 animate-pulse text-[12px] text-amber-300/80">
-          Agent working — cloning, exploring, running… this can take a minute.
-        </p>
-      )}
-
-      {run && !running && (
-        <div className="mt-3 rounded-lg border border-white/[0.05] bg-black/20 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={run.status} />
-            {res?.verdict && <Badge tone={res.verdict === "pass" ? "green" : "red"}>{res.verdict}</Badge>}
-            {res?.severity && (
-              <Badge tone={sevTone(res.severity)}>severity: {res.severity}</Badge>
-            )}
-            {run.jira_ref && <span className="text-[11px] text-blue-300">→ posted to {run.jira_ref}</span>}
-            {run.pr_ref && <span className="text-[11px] text-blue-300">→ commented on PR #{run.pr_ref}</span>}
-          </div>
-          {res?.summary && <p className="mt-2 text-[13px] text-neutral-200">{res.summary}</p>}
-          {res?.tests && <p className="mt-1 text-[12px] text-neutral-400">{res.tests}</p>}
-          {res?.error && <p className="mt-2 text-[12px] text-red-300">⚠ {res.error}</p>}
-          {res?.findings && res.findings.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {res.findings.map((f, i) => (
-                <li key={i} className="text-[12px] text-neutral-300">
-                  <span className="text-red-300">●</span> <b>{f.title}</b>
-                  {f.location ? <span className="text-neutral-500"> ({f.location})</span> : null}
-                  {f.detail ? <> — {f.detail}</> : null}
-                </li>
-              ))}
-            </ul>
+      {run && (
+        <button
+          onClick={onOpen}
+          className="mt-3 flex w-full flex-wrap items-center gap-2 rounded-lg border border-white/[0.05] bg-black/20 p-3 text-left"
+        >
+          <StatusBadge status={run.status} />
+          {res?.verdict && (
+            <Badge tone={res.verdict === "pass" ? "green" : res.verdict === "fail" ? "red" : "gray"}>
+              {res.verdict}
+            </Badge>
           )}
-          {(log || res) && (
-            <button
-              onClick={() => setShowLog((s) => !s)}
-              className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300"
-            >
-              {showLog ? "Hide" : "Show"} run log
-            </button>
+          {res?.severity && <Badge tone={sevTone(res.severity)}>severity: {res.severity}</Badge>}
+          {run.jira_ref && <span className="text-[11px] text-blue-300">→ {run.jira_ref}</span>}
+          {run.pr_ref && <span className="text-[11px] text-blue-300">→ PR #{run.pr_ref}</span>}
+          {res?.summary && (
+            <span className="w-full text-[12px] text-neutral-300">{res.summary}</span>
           )}
-          {showLog && log && (
-            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-[11px] leading-relaxed text-neutral-400">
-              {log}
-            </pre>
-          )}
-        </div>
+        </button>
       )}
     </div>
   );
 }
 
-function NewAgentForm({ onCreated }: { onCreated: () => void }) {
+function NewAgentForm({ onCreated }: { onCreated: (newId?: number) => void }) {
   const [type, setType] = useState<AgentType>("tester");
   const [saving, setSaving] = useState(false);
-  // shared config fields
   const [ticketKey, setTicketKey] = useState("CRM360-22");
   const [branch, setBranch] = useState("feature/contacts-api");
+  const [baseBranch, setBaseBranch] = useState("main");
   const [cron, setCron] = useState("0 9 * * *");
-  const [prNumber, setPrNumber] = useState<string>("");
-  const [prs, setPrs] = useState<{ number: number; title: string }[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
   const [transcripts, setTranscripts] = useState<{ name: string }[]>([]);
   const [transcriptName, setTranscriptName] = useState("");
   const [pasteText, setPasteText] = useState("");
 
   useEffect(() => {
-    fetch("/api/github/prs")
+    fetch("/api/github/branches")
       .then((r) => r.json())
-      .then((d) => {
-        setPrs(d.prs ?? []);
-        if (d.prs?.[0]) setPrNumber(String(d.prs[0].number));
-      });
+      .then((d) => setBranches(d.branches ?? []));
     fetch("/api/transcripts")
       .then((r) => r.json())
       .then((d) => {
@@ -260,17 +209,17 @@ function NewAgentForm({ onCreated }: { onCreated: () => void }) {
       type === "tester"
         ? { branch, ticketKey }
         : type === "pr_security"
-          ? { prNumber: Number(prNumber) }
-          : { ticketKey, transcriptName, branch: "main" };
+          ? { baseBranch }
+          : { transcriptName, branch: "main" };
     const body: Record<string, unknown> = { type, config };
     if (type === "scrum" && cron) body.schedule_cron = cron;
-    await fetch("/api/agents", {
+    const r = await fetch("/api/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
+    }).then((x) => x.json());
     setSaving(false);
-    onCreated();
+    onCreated(r?.id);
   }
 
   return (
@@ -281,7 +230,9 @@ function NewAgentForm({ onCreated }: { onCreated: () => void }) {
             key={t}
             onClick={() => setType(t)}
             className={`rounded-lg px-3 py-1.5 text-xs ${
-              type === t ? "bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30" : "bg-white/[0.03] text-neutral-400"
+              type === t
+                ? "bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30"
+                : "bg-white/[0.03] text-neutral-400"
             }`}
           >
             {TYPE_LABEL[t]}
@@ -290,11 +241,22 @@ function NewAgentForm({ onCreated }: { onCreated: () => void }) {
       </div>
       <p className="mt-2 text-[12px] text-neutral-500">{TYPE_DESC[type]}</p>
 
+      <datalist id="repo-branches">
+        {branches.map((b) => (
+          <option key={b} value={b} />
+        ))}
+      </datalist>
+
       <div className="mt-3 space-y-2">
         {type === "tester" && (
           <>
             <Field label="Branch">
-              <input value={branch} onChange={(e) => setBranch(e.target.value)} className={inputCls} />
+              <input
+                list="repo-branches"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className={inputCls}
+              />
             </Field>
             <Field label="Jira ticket">
               <input value={ticketKey} onChange={(e) => setTicketKey(e.target.value)} className={inputCls} />
@@ -302,24 +264,28 @@ function NewAgentForm({ onCreated }: { onCreated: () => void }) {
           </>
         )}
         {type === "pr_security" && (
-          <Field label="Pull request">
-            <select value={prNumber} onChange={(e) => setPrNumber(e.target.value)} className={inputCls}>
-              {prs.length === 0 && <option value="">No open PRs found</option>}
-              {prs.map((p) => (
-                <option key={p.number} value={p.number}>
-                  #{p.number} — {p.title}
-                </option>
-              ))}
-            </select>
+          <Field label="Branch to watch (PRs targeting this branch get reviewed)">
+            <input
+              list="repo-branches"
+              value={baseBranch}
+              onChange={(e) => setBaseBranch(e.target.value)}
+              className={inputCls}
+              placeholder="main"
+            />
           </Field>
         )}
         {type === "scrum" && (
           <>
-            <Field label="Jira ticket">
-              <input value={ticketKey} onChange={(e) => setTicketKey(e.target.value)} className={inputCls} />
-            </Field>
+            <p className="text-[12px] text-neutral-500">
+              Tickets are auto-detected from the transcript (e.g. <code>CRM360-22</code>) — one update
+              posted per ticket mentioned.
+            </p>
             <Field label="Transcript">
-              <select value={transcriptName} onChange={(e) => setTranscriptName(e.target.value)} className={inputCls}>
+              <select
+                value={transcriptName}
+                onChange={(e) => setTranscriptName(e.target.value)}
+                className={inputCls}
+              >
                 {transcripts.length === 0 && <option value="">No transcripts — paste one below</option>}
                 {transcripts.map((t) => (
                   <option key={t.name} value={t.name}>
@@ -336,7 +302,10 @@ function NewAgentForm({ onCreated }: { onCreated: () => void }) {
                 placeholder="…or paste a standup transcript and click Upload"
                 className={inputCls}
               />
-              <button onClick={uploadTranscript} className="mt-1 rounded-md bg-white/5 px-2 py-1 text-[11px] text-neutral-300">
+              <button
+                onClick={uploadTranscript}
+                className="mt-1 rounded-md bg-white/5 px-2 py-1 text-[11px] text-neutral-300"
+              >
                 Upload transcript
               </button>
             </div>
@@ -368,28 +337,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const tone = status === "done" ? "green" : status === "failed" ? "red" : "amber";
-  return <Badge tone={tone as Tone}>{status}</Badge>;
-}
-
-type Tone = "green" | "red" | "amber" | "blue" | "gray";
-function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
-  const map: Record<Tone, string> = {
-    green: "bg-emerald-500/15 text-emerald-300",
-    red: "bg-red-500/15 text-red-300",
-    amber: "bg-amber-500/15 text-amber-300",
-    blue: "bg-blue-500/15 text-blue-300",
-    gray: "bg-white/5 text-neutral-400",
-  };
-  return <span className={`rounded px-1.5 py-0.5 text-[10px] ${map[tone]}`}>{children}</span>;
-}
-
-function sevTone(sev: string): Tone {
-  if (sev === "critical" || sev === "high") return "red";
-  if (sev === "medium") return "amber";
-  if (sev === "low") return "blue";
-  return "gray";
 }

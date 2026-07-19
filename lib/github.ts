@@ -70,6 +70,23 @@ export async function listOpenPRs(repo = DEFAULT_REPO): Promise<PullRequest[]> {
   }));
 }
 
+/** List branch names on the repo (via the gh API), newest activity first-ish. */
+export async function listBranches(repo = DEFAULT_REPO): Promise<string[]> {
+  try {
+    const out = await run(
+      "gh",
+      ["api", "--paginate", `repos/${repo}/branches`, "-q", ".[].name"],
+      { timeoutMs: 30_000 }
+    );
+    return out
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /** Get a PR's unified diff. */
 export async function getPRDiff(prNumber: number, repo = DEFAULT_REPO): Promise<string> {
   return run("gh", ["pr", "diff", String(prNumber), "--repo", repo], {

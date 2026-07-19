@@ -96,6 +96,8 @@ function applyMigrations(db: Database.Database) {
       pr_ref TEXT                    -- PR number/url it posted to
     );
   `);
+  // Live structured test results for the Tester agent (rendered as pass/fail cards).
+  ensureColumn(db, "agent_runs", "tests_json", "TEXT");
   migrationsApplied = true;
 }
 
@@ -359,4 +361,5 @@ export interface AgentRunRow {
   result: string | null;
   jira_ref: string | null;
   pr_ref: string | null;
+  tests_json: string | null;
 }
