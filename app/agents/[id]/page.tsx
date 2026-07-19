@@ -13,6 +13,8 @@ import {
   RunResult,
   TestGrid,
   TestCase,
+  StepGrid,
+  StepCard,
   currentPhase,
 } from "@/components/agentUi";
 
@@ -29,6 +31,7 @@ interface RunSummary {
 interface RunFull extends RunSummary {
   log: string;
   tests?: TestCase[];
+  steps?: StepCard[];
 }
 interface AgentDetail {
   id: number;
@@ -51,6 +54,7 @@ export default function AgentDetailPage() {
   const [run, setRun] = useState<RunFull | null>(null);
   const [starting, setStarting] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const autoStarted = useRef(false);
 
   const loadAgent = useCallback(async () => {
@@ -59,6 +63,20 @@ export default function AgentDetailPage() {
     if (d.runs) setRuns(d.runs);
     return d;
   }, [id]);
+
+  const scan = useCallback(async () => {
+    setScanning(true);
+    try {
+      const d = await fetch(`/api/agents/${id}/scan`, { method: "POST" }).then((r) =>
+        r.json()
+      );
+      if (d.error) alert("Scan failed: " + d.error);
+      else if (!d.queued) alert("No new transcripts found in the watched folder.");
+      await loadAgent();
+    } finally {
+      setScanning(false);
+    }
+  }, [id, loadAgent]);
 
   const start = useCallback(async () => {
     setStarting(true);
@@ -82,7 +100,7 @@ export default function AgentDetailPage() {
   useEffect(() => {
     (async () => {
       const d = await loadAgent();
-      if (search.get("run") === "1" && !autoStarted.current) {
+      if (search.get("run") === "1" && !autoStarted.current && d.agent?.type !== "scrum") {
         autoStarted.current = true;
         router.replace(`/agents/${id}`);
         await start();
@@ -171,17 +189,34 @@ export default function AgentDetailPage() {
               targeting it is reviewed automatically.
             </p>
           )}
+          {agent.type === "scrum" && (
+            <p className="mt-1 text-[11px] text-sky-300/80">
+              📁 Watching folder{" "}
+              <b>{String(agent.config.folder || "data/crm360/01_Meeting_Transcripts")}</b> — each new
+              transcript is processed in its own run.
+            </p>
+          )}
           {agent.schedule_cron && (
             <p className="mt-1 text-[11px] text-neutral-500">⏱ schedule: {agent.schedule_cron}</p>
           )}
         </div>
-        <button
-          onClick={start}
-          disabled={isRunning}
-          className="shrink-0 rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-[#0a0a0c] disabled:opacity-50"
-        >
-          {isRunning ? "Running…" : "Run now"}
-        </button>
+        {agent.type === "scrum" ? (
+          <button
+            onClick={scan}
+            disabled={scanning}
+            className="shrink-0 rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-[#0a0a0c] disabled:opacity-50"
+          >
+            {scanning ? "Checking…" : "Check for new transcripts"}
+          </button>
+        ) : (
+          <button
+            onClick={start}
+            disabled={isRunning}
+            className="shrink-0 rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-[#0a0a0c] disabled:opacity-50"
+          >
+            {isRunning ? "Running…" : "Run now"}
+          </button>
+        )}
       </div>
 
       {/* Live run panel */}
@@ -208,31 +243,54 @@ export default function AgentDetailPage() {
           run ? (
             <>
               <TestGrid tests={run.tests || []} running={run.status === "running"} />
-              <button
-                onClick={() => setShowLog((s) => !s)}
-                className="mt-3 text-[11px] text-neutral-500 hover:text-neutral-300"
-              >
-                {showLog ? "Hide" : "Show"} technical log
-              </button>
-              {showLog && (
-                <div className="mt-2">
-                  <LogTerminal log={run.log || ""} live={run.status === "running"} />
-                </div>
-              )}
+              <LogToggle
+                show={showLog}
+                onToggle={() => setShowLog((s) => !s)}
+                log={run.log || ""}
+                live={run.status === "running"}
+              />
             </>
           ) : (
-            <div className="rounded-lg border border-white/[0.06] bg-black/30 p-6 text-center text-[13px] text-neutral-400">
+            <Placeholder>
               {isRunning
                 ? "Starting the agent…"
                 : "Click Run now — you'll watch each test appear and turn green or red."}
-            </div>
+            </Placeholder>
+          )
+        ) : agent.type === "scrum" || agent.type === "pr_security" ? (
+          run ? (
+            <>
+              <StepGrid
+                steps={run.steps || []}
+                running={run.status === "running"}
+                emptyLabel={
+                  agent.type === "scrum"
+                    ? "Reading the transcript and finding tickets…"
+                    : "Reviewing the change for vulnerabilities…"
+                }
+              />
+              <LogToggle
+                show={showLog}
+                onToggle={() => setShowLog((s) => !s)}
+                log={run.log || ""}
+                live={run.status === "running"}
+              />
+            </>
+          ) : (
+            <Placeholder>
+              {isRunning
+                ? "Starting…"
+                : agent.type === "scrum"
+                  ? "Click ‘Check for new transcripts’ to process new standups."
+                  : "Waiting for a PR — reviews run automatically. Or Run now to review the latest."}
+            </Placeholder>
           )
         ) : run ? (
           <LogTerminal log={run.log || ""} live={run.status === "running"} />
         ) : (
-          <div className="rounded-lg border border-white/[0.06] bg-black/30 p-6 text-center text-[12px] text-neutral-500">
+          <Placeholder>
             {isRunning ? "Starting the agent…" : "Click Run now to start a run and watch it live."}
-          </div>
+          </Placeholder>
         )}
 
         {run?.result && (
@@ -271,5 +329,41 @@ export default function AgentDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function Placeholder({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-black/30 p-6 text-center text-[13px] text-neutral-400">
+      {children}
+    </div>
+  );
+}
+
+function LogToggle({
+  show,
+  onToggle,
+  log,
+  live,
+}: {
+  show: boolean;
+  onToggle: () => void;
+  log: string;
+  live: boolean;
+}) {
+  return (
+    <>
+      <button
+        onClick={onToggle}
+        className="mt-3 text-[11px] text-neutral-500 hover:text-neutral-300"
+      >
+        {show ? "Hide" : "Show"} technical log
+      </button>
+      {show && (
+        <div className="mt-2">
+          <LogTerminal log={log} live={live} />
+        </div>
+      )}
+    </>
   );
 }

@@ -33,7 +33,6 @@ export async function DELETE(
     for (const p of projects) {
       db.prepare("DELETE FROM documents WHERE project_id = ?").run(p.id);
       db.prepare("DELETE FROM decisions WHERE project_id = ?").run(p.id);
-      db.prepare("DELETE FROM interviews WHERE project_id = ?").run(p.id);
     }
     const acts = db
       .prepare("SELECT id FROM activities WHERE team_id = ?")

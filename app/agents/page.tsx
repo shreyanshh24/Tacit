@@ -83,7 +83,11 @@ export default function AgentsPage() {
               key={a.id}
               agent={a}
               onOpen={() => router.push(`/agents/${a.id}`)}
-              onRun={() => router.push(`/agents/${a.id}?run=1`)}
+              onRun={() =>
+                router.push(
+                  a.type === "scrum" ? `/agents/${a.id}` : `/agents/${a.id}?run=1`
+                )
+              }
             />
           ))
         )}
@@ -138,7 +142,7 @@ function AgentCard({
           onClick={onRun}
           className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-200 hover:bg-white/5"
         >
-          Run now
+          {agent.type === "scrum" ? "Open" : "Run now"}
         </button>
       </div>
 
@@ -172,36 +176,14 @@ function NewAgentForm({ onCreated }: { onCreated: (newId?: number) => void }) {
   const [branch, setBranch] = useState("feature/contacts-api");
   const [baseBranch, setBaseBranch] = useState("main");
   const [cron, setCron] = useState("0 9 * * *");
+  const [folder, setFolder] = useState("data/crm360/01_Meeting_Transcripts");
   const [branches, setBranches] = useState<string[]>([]);
-  const [transcripts, setTranscripts] = useState<{ name: string }[]>([]);
-  const [transcriptName, setTranscriptName] = useState("");
-  const [pasteText, setPasteText] = useState("");
 
   useEffect(() => {
     fetch("/api/github/branches")
       .then((r) => r.json())
       .then((d) => setBranches(d.branches ?? []));
-    fetch("/api/transcripts")
-      .then((r) => r.json())
-      .then((d) => {
-        setTranscripts(d.transcripts ?? []);
-        if (d.transcripts?.[0]) setTranscriptName(d.transcripts[0].name);
-      });
   }, []);
-
-  async function uploadTranscript() {
-    if (!pasteText.trim()) return;
-    const r = await fetch("/api/transcripts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: `standup-${Date.now()}`, text: pasteText }),
-    }).then((x) => x.json());
-    if (r.name) {
-      setTranscripts((t) => [{ name: r.name }, ...t]);
-      setTranscriptName(r.name);
-      setPasteText("");
-    }
-  }
 
   async function create() {
     setSaving(true);
@@ -210,7 +192,7 @@ function NewAgentForm({ onCreated }: { onCreated: (newId?: number) => void }) {
         ? { branch, ticketKey }
         : type === "pr_security"
           ? { baseBranch }
-          : { transcriptName, branch: "main" };
+          : { folder, branch: "main" };
     const body: Record<string, unknown> = { type, config };
     if (type === "scrum" && cron) body.schedule_cron = cron;
     const r = await fetch("/api/agents", {
@@ -277,38 +259,18 @@ function NewAgentForm({ onCreated }: { onCreated: (newId?: number) => void }) {
         {type === "scrum" && (
           <>
             <p className="text-[12px] text-neutral-500">
-              Tickets are auto-detected from the transcript (e.g. <code>CRM360-22</code>) — one update
-              posted per ticket mentioned.
+              Watches a folder of transcripts. A daily scan processes each new transcript in one
+              run, auto-detecting the tickets it mentions (e.g. <code>CRM360-22</code>) and logging
+              any decisions.
             </p>
-            <Field label="Transcript">
-              <select
-                value={transcriptName}
-                onChange={(e) => setTranscriptName(e.target.value)}
+            <Field label="Transcripts folder">
+              <input
+                value={folder}
+                onChange={(e) => setFolder(e.target.value)}
                 className={inputCls}
-              >
-                {transcripts.length === 0 && <option value="">No transcripts — paste one below</option>}
-                {transcripts.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div>
-              <textarea
-                value={pasteText}
-                onChange={(e) => setPasteText(e.target.value)}
-                rows={3}
-                placeholder="…or paste a standup transcript and click Upload"
-                className={inputCls}
+                placeholder="data/crm360/01_Meeting_Transcripts"
               />
-              <button
-                onClick={uploadTranscript}
-                className="mt-1 rounded-md bg-white/5 px-2 py-1 text-[11px] text-neutral-300"
-              >
-                Upload transcript
-              </button>
-            </div>
+            </Field>
             <Field label="Schedule (cron)">
               <input value={cron} onChange={(e) => setCron(e.target.value)} className={inputCls} placeholder="0 9 * * *" />
             </Field>

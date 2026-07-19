@@ -98,6 +98,11 @@ function applyMigrations(db: Database.Database) {
   `);
   // Live structured test results for the Tester agent (rendered as pass/fail cards).
   ensureColumn(db, "agent_runs", "tests_json", "TEXT");
+  // Live structured progress cards for the Scrum + PR-Security agents.
+  ensureColumn(db, "agent_runs", "steps_json", "TEXT");
+  // Chat: incremental streaming + resume (content written as it generates).
+  ensureColumn(db, "chat_messages", "status", "TEXT");
+  ensureColumn(db, "chat_messages", "meta", "TEXT");
   migrationsApplied = true;
 }
 
@@ -333,6 +338,8 @@ export interface ChatMessageRow {
   mode: string | null;
   content: string | null;
   sources: string | null;
+  status: string | null; // 'streaming' | 'done' | 'error' (assistant messages)
+  meta: string | null; // JSON { sources, cards }
   created_at: string;
 }
 
@@ -362,4 +369,5 @@ export interface AgentRunRow {
   jira_ref: string | null;
   pr_ref: string | null;
   tests_json: string | null;
+  steps_json: string | null;
 }

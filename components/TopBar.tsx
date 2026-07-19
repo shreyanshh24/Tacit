@@ -9,7 +9,6 @@ import ProjectSwitcher from "./ProjectSwitcher";
 const TOP_LINKS = [
   { href: "/jira", label: "Jira" },
   { href: "/decisions", label: "Decisions" },
-  { href: "/interviewer", label: "Interviewer" },
   { href: "/activity", label: "Activity" },
   { href: "/settings", label: "Settings" },
 ];

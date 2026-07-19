@@ -33,15 +33,28 @@ TRANSCRIPT:
 ${opts.transcript.slice(0, 8000)}
 """
 
+Also capture any DECISIONS the standup records — a choice made, an agreement, a kill, or a deferral (e.g. "we're deferring X", "agreed not to merge until Y", "we'll adopt Z"). Only include a decision if the transcript clearly states one; otherwise return an empty "decisions" array. These are written to the project's decision log, so make each one self-contained.
+
 ${JSON_CONTRACT}
 The JSON must be:
 {
   "summary": "one-line summary of the standup across all tickets",
   "updates": [
     { "ticketKey": "${opts.tickets[0]?.key ?? "CRM360-1"}", "summary": "one-line status for this ticket", "comment": "the markdown comment to post on this ticket" }
+  ],
+  "decisions": [
+    {
+      "title": "short decision title",
+      "decision": "what was decided, in one or two sentences",
+      "reasoning": "why it was decided that way",
+      "outcome": "active" | "killed" | "succeeded" | "failed" | "unknown",
+      "ticketKeys": ["CRM360-24"],
+      "alternatives": [{ "option": "the option not chosen", "why_rejected": "why" }],
+      "people": [{ "name": "who", "role_in_decision": "owner/decider/etc" }]
+    }
   ]
 }
-Only include a ticket in "updates" if the transcript actually discusses it.`;
+Only include a ticket in "updates" if the transcript actually discusses it, and only include a decision if the transcript actually records one (otherwise "decisions" is []).`;
 }
 
 export function testerPrompt(opts: {

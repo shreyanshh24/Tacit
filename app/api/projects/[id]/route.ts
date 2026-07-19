@@ -34,7 +34,6 @@ export async function DELETE(
   const tx = db.transaction(() => {
     db.prepare("DELETE FROM documents WHERE project_id = ?").run(projectId);
     db.prepare("DELETE FROM decisions WHERE project_id = ?").run(projectId);
-    db.prepare("DELETE FROM interviews WHERE project_id = ?").run(projectId);
     const acts = db
       .prepare("SELECT id FROM activities WHERE project_id = ?")
       .all(projectId) as { id: number }[];

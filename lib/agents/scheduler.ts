@@ -5,6 +5,7 @@
 import cron, { ScheduledTask } from "node-cron";
 import { getDb, AgentRow } from "../db";
 import { runAgent } from "./runner";
+import { scanScrumFolder } from "./scrumWatch";
 
 interface CronState {
   started: boolean;
@@ -43,9 +44,18 @@ export function scheduleAgent(a: AgentRow): void {
     state.tasks.delete(a.id);
   }
   const task = cron.schedule(a.schedule_cron, () => {
-    runAgent(a.id, "schedule").catch((e) =>
-      console.error(`[tacit] scheduled run for agent ${a.id} failed`, e)
-    );
+    // Scrum agents scan their folder (one run per new transcript); others just run.
+    if (a.type === "scrum") {
+      try {
+        scanScrumFolder(a.id);
+      } catch (e) {
+        console.error(`[tacit] scrum scan for agent ${a.id} failed`, e);
+      }
+    } else {
+      runAgent(a.id, "schedule").catch((e) =>
+        console.error(`[tacit] scheduled run for agent ${a.id} failed`, e)
+      );
+    }
   });
   state.tasks.set(a.id, task);
 }

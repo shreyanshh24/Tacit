@@ -3,6 +3,7 @@
 // back to the client (a streamed LLM answer, structured cards, or static text).
 
 import { search, formatChunks } from "./retrieval";
+import { getBranchDocChunks } from "./repoDocs";
 import { memoryPrompt, foresightPrompt, assumptionsPrompt } from "./prompts";
 import { generateJSON } from "./llm";
 import { embed } from "./embeddings";
@@ -65,7 +66,11 @@ export async function runMemory(
   question: string,
   session: Session
 ): Promise<HandlerResult> {
-  const docs = await search(question, 8, session.projectId);
+  const [hits, branchDocs] = await Promise.all([
+    search(question, 8, session.projectId),
+    getBranchDocChunks(question),
+  ]);
+  const docs = [...branchDocs, ...hits];
   await logActivity({ type: "memory", title: question });
   return {
     mode: "memory",
@@ -79,7 +84,11 @@ export async function runForesight(
   proposal: string,
   session: Session
 ): Promise<HandlerResult> {
-  const docs = await search(proposal, 6, session.projectId);
+  const [hits, branchDocs] = await Promise.all([
+    search(proposal, 6, session.projectId),
+    getBranchDocChunks(proposal),
+  ]);
+  const docs = [...branchDocs, ...hits];
   const firstLine = proposal.trim().split("\n")[0].slice(0, 120);
   await logActivity({ type: "foresight", title: "Pre-mortem", detail: firstLine });
   return {

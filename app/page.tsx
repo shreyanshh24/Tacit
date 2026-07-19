@@ -1,22 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CitationText from "@/components/CitationText";
 import ConnectJira from "@/components/ConnectJira";
 import { useSources } from "@/components/SourcesProvider";
-import { consumeMetaStream, type StreamSource } from "@/components/streamClient";
 import { useSession } from "@/components/SessionProvider";
-
-type Mode = "auto" | "memory" | "foresight" | "assumptions" | "decisions" | "capture";
-
-const MODES: { id: Mode; label: string }[] = [
-  { id: "auto", label: "Auto" },
-  { id: "memory", label: "Memory" },
-  { id: "foresight", label: "Foresight" },
-  { id: "assumptions", label: "Assumptions" },
-  { id: "decisions", label: "Decisions" },
-  { id: "capture", label: "Capture" },
-];
+import { type StreamSource } from "@/components/streamClient";
 
 interface Cards {
   type: "assumptions" | "decisions";
@@ -24,11 +13,18 @@ interface Cards {
 }
 
 interface Msg {
+  id?: number;
   role: "user" | "assistant";
   mode?: string;
   content: string;
+  status?: string;
   sources?: StreamSource[] | null;
   cards?: Cards | null;
+}
+
+interface Conversation {
+  id: number;
+  title: string | null;
 }
 
 const EXAMPLES = [
@@ -41,182 +37,244 @@ const EXAMPLES = [
 export default function ChatPage() {
   const { project } = useSession();
   const { register } = useSources();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<Mode>("auto");
-  const [loading, setLoading] = useState(false);
-  const convId = useRef<number | null>(null);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef<number | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  const applyMessages = useCallback(
+    (msgs: Msg[]) => {
+      setMessages(msgs);
+      for (const m of msgs) if (m.sources?.length) register(m.sources);
+    },
+    [register]
+  );
+
+  const loadConversations = useCallback(async () => {
+    const d = await fetch("/api/conversations").then((r) => r.json());
+    const list: Conversation[] = d.conversations ?? [];
+    setConversations(list);
+    return list;
+  }, []);
+
+  // Fetch the active conversation; keep polling while any message is streaming
+  // (this is what makes an in-progress answer resume after a tab switch/reload).
+  const refresh = useCallback(
+    async (id: number) => {
+      const d = await fetch(`/api/conversations/${id}`)
+        .then((r) => r.json())
+        .catch(() => null);
+      if (!d || activeIdRef.current !== id) return;
+      applyMessages(d.messages ?? []);
+      if ((d.messages ?? []).some((m: Msg) => m.status === "streaming")) {
+        if (pollRef.current) clearTimeout(pollRef.current);
+        pollRef.current = setTimeout(() => refresh(id), 400);
+      }
+    },
+    [applyMessages]
+  );
+
+  const openConversation = useCallback(
+    (id: number) => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+      activeIdRef.current = id;
+      setActiveId(id);
+      setMessages([]);
+      refresh(id);
+    },
+    [refresh]
+  );
+
+  // Initial load: list conversations + open the most recent.
+  useEffect(() => {
+    (async () => {
+      const list = await loadConversations();
+      if (list[0]) openConversation(list[0].id);
+    })();
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function newChat() {
+    if (pollRef.current) clearTimeout(pollRef.current);
+    activeIdRef.current = null;
+    setActiveId(null);
+    setMessages([]);
+  }
+
   async function send(text: string) {
     const q = text.trim();
-    if (!q || loading) return;
+    if (!q || sending) return;
     setInput("");
-    setLoading(true);
+    setSending(true);
+    // Optimistic echo.
     setMessages((m) => [
       ...m,
       { role: "user", content: q },
-      { role: "assistant", content: "", mode: mode === "auto" ? undefined : mode },
+      { role: "assistant", content: "", status: "streaming" },
     ]);
-
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: q,
-          mode: mode === "auto" ? undefined : mode,
-          conversationId: convId.current,
-        }),
+        body: JSON.stringify({ message: q, conversationId: activeIdRef.current }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Request failed" }));
-        patchLast((a) => ({ ...a, content: `⚠ ${err.error ?? "Request failed"}` }));
+        setMessages((m) => {
+          const c = [...m];
+          for (let i = c.length - 1; i >= 0; i--)
+            if (c[i].role === "assistant") {
+              c[i] = { ...c[i], content: `⚠ ${err.error ?? "Request failed"}`, status: "error" };
+              break;
+            }
+          return c;
+        });
         return;
       }
-      await consumeMetaStream(res, {
-        onMeta: (meta) => {
-          convId.current = meta.conversationId;
-          if (meta.sources?.length) register(meta.sources);
-          patchLast((a) => ({
-            ...a,
-            mode: meta.mode,
-            sources: meta.sources,
-            cards: meta.cards,
-          }));
-        },
-        onDelta: (t) => patchLast((a) => ({ ...a, content: a.content + t })),
-      });
+      const { conversationId } = await res.json();
+      if (activeIdRef.current == null) {
+        activeIdRef.current = conversationId;
+        setActiveId(conversationId);
+        loadConversations();
+      } else {
+        loadConversations();
+      }
+      refresh(conversationId);
     } catch (e) {
-      patchLast((a) => ({ ...a, content: `⚠ ${(e as Error).message}` }));
+      setMessages((m) => [...m, { role: "assistant", content: `⚠ ${(e as Error).message}`, status: "error" }]);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   }
 
-  function patchLast(fn: (a: Msg) => Msg) {
-    setMessages((m) => {
-      const copy = [...m];
-      for (let i = copy.length - 1; i >= 0; i--) {
-        if (copy[i].role === "assistant") {
-          copy[i] = fn(copy[i]);
-          break;
-        }
-      }
-      return copy;
-    });
-  }
-
-  function newChat() {
-    convId.current = null;
-    setMessages([]);
-  }
-
   const empty = messages.length === 0;
+  const streaming = messages.some((m) => m.status === "streaming");
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6">
-        <div>
-          <h1 className="text-lg font-semibold text-white">Chat</h1>
-          <p className="text-xs text-neutral-500">
-            One place to ask, analyze, and capture — {project?.name ?? "this project"}
+    <div className="flex h-[calc(100vh-3.5rem)] w-full">
+      {/* Conversation list */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.06] md:flex">
+        <div className="p-3">
+          <button
+            onClick={newChat}
+            className="w-full rounded-lg bg-amber-400 px-3 py-2 text-sm font-medium text-[#0a0a0c]"
+          >
+            + New chat
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 pb-3">
+          {conversations.length === 0 ? (
+            <p className="px-2 py-3 text-[12px] text-neutral-600">No conversations yet.</p>
+          ) : (
+            conversations.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => openConversation(c.id)}
+                className={`mb-1 block w-full truncate rounded-lg px-3 py-2 text-left text-[13px] ${
+                  c.id === activeId
+                    ? "bg-white/[0.06] text-neutral-100"
+                    : "text-neutral-400 hover:bg-white/[0.04]"
+                }`}
+                title={c.title ?? "Untitled"}
+              >
+                {c.title || "Untitled"}
+              </button>
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* Chat thread */}
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+        <div className="flex items-center justify-between px-6 pt-6">
+          <div>
+            <h1 className="text-lg font-semibold text-white">Chat</h1>
+            <p className="text-xs text-neutral-500">
+              Ask, analyze, and capture — {project?.name ?? "this project"}
+            </p>
+          </div>
+          <button
+            onClick={newChat}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/5 md:hidden"
+          >
+            + New
+          </button>
+        </div>
+
+        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {empty ? (
+            <div className="mt-6">
+              <p className="text-center text-sm text-neutral-400">
+                Ask about this project&apos;s memory, paste a plan for a pre-mortem, or capture a note.
+              </p>
+              <div className="mx-auto mt-5 grid max-w-xl gap-2">
+                {EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    onClick={() => send(ex)}
+                    className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-left text-[13px] text-neutral-300 hover:border-amber-400/30 hover:bg-white/[0.04]"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+              <div className="mx-auto mt-6 max-w-xl">
+                <ConnectJira />
+              </div>
+            </div>
+          ) : (
+            messages.map((m, i) => (
+              <MessageView
+                key={m.id ?? i}
+                msg={m}
+                streaming={m.role === "assistant" && m.status === "streaming"}
+              />
+            ))
+          )}
+        </div>
+
+        <div className="border-t border-white/[0.06] px-6 py-4">
+          <div className="flex items-end gap-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send(input);
+                }
+              }}
+              rows={1}
+              placeholder="Ask a question, paste a plan, or type / for a command…"
+              className="max-h-40 flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-amber-400/40 focus:outline-none"
+            />
+            <button
+              onClick={() => send(input)}
+              disabled={sending || !input.trim()}
+              className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-medium text-[#0a0a0c] transition-opacity disabled:opacity-40"
+            >
+              {sending ? "…" : "Send"}
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-neutral-600">
+            {streaming ? "Generating… (keeps running if you switch tabs)" : "Auto-routes to memory, foresight, assumptions, decisions, or capture"} · Enter to send
           </p>
         </div>
-        <button
-          onClick={newChat}
-          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/5"
-        >
-          + New chat
-        </button>
-      </div>
-
-      {/* Mode chips */}
-      <div className="flex flex-wrap gap-1.5 px-6 pt-3">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setMode(m.id)}
-            className={`rounded-full px-3 py-1 text-[12px] transition-colors ${
-              mode === m.id
-                ? "bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30"
-                : "bg-white/[0.03] text-neutral-400 hover:bg-white/[0.06]"
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-        {empty ? (
-          <div className="mt-6">
-            <p className="text-center text-sm text-neutral-400">
-              Ask about this project&apos;s memory, paste a plan for a pre-mortem, or capture a note.
-            </p>
-            <div className="mx-auto mt-5 grid max-w-xl gap-2">
-              {EXAMPLES.map((ex) => (
-                <button
-                  key={ex}
-                  onClick={() => send(ex)}
-                  className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-left text-[13px] text-neutral-300 hover:border-amber-400/30 hover:bg-white/[0.04]"
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-            <div className="mx-auto mt-6 max-w-xl">
-              <ConnectJira />
-            </div>
-          </div>
-        ) : (
-          messages.map((m, i) => (
-            <MessageView
-              key={i}
-              msg={m}
-              streaming={loading && i === messages.length - 1 && m.role === "assistant"}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-white/[0.06] px-6 py-4">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send(input);
-              }
-            }}
-            rows={1}
-            placeholder={
-              mode === "capture"
-                ? "Paste a note or transcript to capture…"
-                : "Ask a question, paste a plan, or type / for a command…"
-            }
-            className="max-h-40 flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-amber-400/40 focus:outline-none"
-          />
-          <button
-            onClick={() => send(input)}
-            disabled={loading || !input.trim()}
-            className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-medium text-[#0a0a0c] transition-opacity disabled:opacity-40"
-          >
-            {loading ? "…" : "Send"}
-          </button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-neutral-600">
-          {mode === "auto" ? "Auto-routing" : `Forced: ${mode}`} · Enter to send · Shift+Enter for newline
-        </p>
       </div>
     </div>
   );
@@ -246,7 +304,7 @@ function MessageView({ msg, streaming }: { msg: Msg; streaming: boolean }) {
           {msg.content ? (
             <CitationText text={msg.content} streaming={streaming} />
           ) : (
-            <span className="text-neutral-500">Thinking…</span>
+            <span className="animate-pulse text-neutral-500">Thinking…</span>
           )}
         </div>
 

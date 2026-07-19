@@ -2,7 +2,7 @@ import { getDb } from "./db";
 import { getSession } from "./session";
 
 export interface LogActivityOpts {
-  type: "memory" | "assumptions" | "foresight" | "interview" | "jira_import" | "capture";
+  type: "memory" | "assumptions" | "foresight" | "jira_import" | "capture";
   title?: string;
   detail?: string;
   ref?: string;

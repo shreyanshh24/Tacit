@@ -77,27 +77,3 @@ SIMILAR PAST INITIATIVES (retrieved):
 ${chunks}`;
 }
 
-// P5a — INTERVIEWER question generation
-export function interviewQuestionsPrompt(
-  triggerDescription: string,
-  person: string,
-  relatedChunks: string
-): string {
-  return `An event just occurred: ${triggerDescription}, handled by ${person}.
-Related context from company records:
-${relatedChunks}
-
-Generate exactly 4 short, specific questions to capture what only ${person} knows: the root cause, what they tried that didn't work, what would prevent recurrence, and what early signals to watch for. Each question must be answerable in 1-3 sentences.
-
-Return strict JSON only: {"questions": ["...", "...", "...", "..."]}`;
-}
-
-// P5b — INTERVIEWER synthesis
-export function interviewSynthesisPrompt(person: string, qaPairs: string): string {
-  return `Convert this interview Q&A into a durable knowledge document for the company brain.
-
-Format: a title line, then sections for What Happened, Root Cause, Resolution, Prevention, Early Warning Signs. Credit ${person} as the source. Write it as reference documentation a future engineer would thank you for.
-
-Q&A:
-${qaPairs}`;
-}

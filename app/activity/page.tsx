@@ -36,7 +36,6 @@ const TYPE_META: Record<string, { label: string; cls: string }> = {
   memory: { label: "Memory", cls: "bg-sky-400/15 text-sky-300" },
   assumptions: { label: "Assumptions", cls: "bg-amber-400/15 text-amber-300" },
   foresight: { label: "Foresight", cls: "bg-fuchsia-400/15 text-fuchsia-300" },
-  interview: { label: "Interview", cls: "bg-emerald-400/15 text-emerald-300" },
   jira_import: { label: "Jira", cls: "bg-blue-400/15 text-blue-300" },
   capture: { label: "Capture", cls: "bg-teal-400/15 text-teal-300" },
 };
@@ -96,7 +95,7 @@ export default function ActivityPage() {
           </span>
         </h1>
         <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-neutral-400">
-          Every question, pre-mortem, and captured interview — attributed to who did it.
+          Every question, pre-mortem, and captured note — attributed to who did it.
           Comment on anything to add context.
         </p>
       </header>
@@ -104,8 +103,8 @@ export default function ActivityPage() {
       {error && <p className="text-sm text-red-300">{error}</p>}
       {activities && activities.length === 0 && (
         <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-6 text-sm text-neutral-500">
-          No activity yet. Ask a question in Memory, run a Foresight pre-mortem, or answer an
-          interview — it&apos;ll show up here.
+          No activity yet. Ask a question, run a pre-mortem, or capture a note — it&apos;ll
+          show up here.
         </p>
       )}
 

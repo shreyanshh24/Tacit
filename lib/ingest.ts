@@ -42,7 +42,7 @@ export async function runIngest(): Promise<{
   const db = getDb();
   const seed = loadSeed();
 
-  db.exec("DELETE FROM documents; DELETE FROM interviews;");
+  db.exec("DELETE FROM documents;");
 
   const insertDoc = db.prepare(
     `INSERT INTO documents (source, source_id, author, ts, title, content, embedding)
@@ -54,17 +54,9 @@ export async function runIngest(): Promise<{
     insertDoc.run({ ...doc, embedding });
   }
 
-  const insertInterview = db.prepare(
-    `INSERT INTO interviews (trigger_type, trigger_ref, person, questions, answers, status)
-     VALUES (@trigger_type, @trigger_ref, @person, '[]', '[]', 'pending')`
-  );
-  for (const t of seed.interview_triggers) {
-    insertInterview.run(t);
-  }
-
   return {
     documents: seed.documents.length,
-    interviews: seed.interview_triggers.length,
+    interviews: 0,
   };
 }
 
@@ -162,7 +154,6 @@ export async function loadSampleIntoProject(
   const seed = loadSeed();
 
   db.prepare("DELETE FROM documents WHERE project_id = ?").run(projectId);
-  db.prepare("DELETE FROM interviews WHERE project_id = ?").run(projectId);
   db.prepare("DELETE FROM decisions WHERE project_id = ?").run(projectId);
 
   const insertDoc = db.prepare(
@@ -174,18 +165,10 @@ export async function loadSampleIntoProject(
     insertDoc.run({ ...doc, embedding, project_id: projectId });
   }
 
-  const insertInterview = db.prepare(
-    `INSERT INTO interviews (trigger_type, trigger_ref, person, questions, answers, status, project_id)
-     VALUES (@trigger_type, @trigger_ref, @person, '[]', '[]', 'pending', @project_id)`
-  );
-  for (const t of seed.interview_triggers) {
-    insertInterview.run({ ...t, project_id: projectId });
-  }
-
   const ext = await runExtractForProject(projectId);
   return {
     documents: seed.documents.length,
-    interviews: seed.interview_triggers.length,
+    interviews: 0,
     decisions: ext.decisions,
   };
 }

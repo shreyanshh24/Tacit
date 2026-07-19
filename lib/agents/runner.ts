@@ -12,8 +12,14 @@ import {
   prComment,
   listOpenPRs,
 } from "../github";
+import path from "path";
 import { jiraComment, fetchJiraIssues } from "../jira";
-import { latestTranscript, readTranscript } from "../transcripts";
+import {
+  latestTranscript,
+  readTranscript,
+  readTranscriptFile,
+  latestTranscriptIn,
+} from "../transcripts";
 import { parseJsonLoose } from "../llm";
 import { scrumPrompt, testerPrompt, prSecurityPrompt } from "./prompts";
 
@@ -201,6 +207,43 @@ function makeTestTracker(runId: number) {
 }
 type TestTracker = ReturnType<typeof makeTestTracker>;
 
+type StepStatus = "running" | "done" | "fail" | "skipped" | "info";
+interface StepCard {
+  id: string;
+  label: string;
+  status: StepStatus;
+  detail?: string;
+  tone?: "green" | "red" | "amber" | "blue" | "gray";
+}
+
+/**
+ * Tracks structured progress cards for the Scrum / PR-Security agents so the UI
+ * can render a non-technical box view instead of the raw log. Cards upsert by id.
+ */
+function makeStepTracker(runId: number) {
+  const db = getDb();
+  const steps: StepCard[] = [];
+  const persist = () => {
+    try {
+      db.prepare("UPDATE agent_runs SET steps_json = ? WHERE id = ?").run(
+        JSON.stringify(steps),
+        runId
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+  return {
+    set(card: StepCard) {
+      const existing = steps.find((s) => s.id === card.id);
+      if (existing) Object.assign(existing, card);
+      else steps.push(card);
+      persist();
+    },
+  };
+}
+type StepTracker = ReturnType<typeof makeStepTracker>;
+
 /** Load an agent and merge any per-run overrides into its stored config. */
 function loadAgentAndConfig(
   agentId: number,
@@ -299,6 +342,79 @@ function extractTicketKeys(text: string): string[] {
   return Array.from(new Set(matches));
 }
 
+interface ExtractedDecision {
+  title?: string;
+  decision?: string;
+  reasoning?: string;
+  outcome?: string;
+  ticketKeys?: string[];
+  alternatives?: unknown[];
+  people?: unknown[];
+}
+
+/**
+ * Write standup-captured decisions into the project's decision log — the same
+ * table the Chat "decisions" mode and the Decisions view read from. Additive and
+ * de-duped by title within the project, so re-running a standup won't pile up.
+ */
+function recordDecisions(
+  decisions: ExtractedDecision[],
+  projectId: number | null,
+  transcriptName: string,
+  log: RunLogger,
+  steps?: StepTracker
+): number {
+  const valid = decisions.filter(
+    (d) => String(d?.title || "").trim() && String(d?.decision || "").trim()
+  );
+  if (!valid.length || projectId == null) return 0;
+
+  log.phase(`Recording ${valid.length} decision(s) to the project log`);
+  const db = getDb();
+  const exists = db.prepare(
+    "SELECT 1 FROM decisions WHERE project_id = ? AND title = ? LIMIT 1"
+  );
+  const insert = db.prepare(
+    `INSERT INTO decisions (title, decision, reasoning, alternatives, people, outcome, ts, source_ids, project_id)
+     VALUES (@title, @decision, @reasoning, @alternatives, @people, @outcome, @ts, @source_ids, @project_id)`
+  );
+  const today = new Date().toISOString().slice(0, 10);
+
+  let count = 0;
+  for (const d of valid) {
+    const title = String(d.title).trim();
+    if (exists.get(projectId, title)) {
+      log.line(`  • already logged: ${title}`);
+      continue;
+    }
+    const srcIds =
+      Array.isArray(d.ticketKeys) && d.ticketKeys.length
+        ? d.ticketKeys.map((k) => String(k).toUpperCase())
+        : [transcriptName];
+    insert.run({
+      title,
+      decision: String(d.decision).trim(),
+      reasoning: String(d.reasoning || "").trim(),
+      alternatives: JSON.stringify(Array.isArray(d.alternatives) ? d.alternatives : []),
+      people: JSON.stringify(Array.isArray(d.people) ? d.people : []),
+      outcome: String(d.outcome || "active"),
+      ts: today,
+      source_ids: JSON.stringify(srcIds),
+      project_id: projectId,
+    });
+    count++;
+    log.line(`  🗂 recorded decision: ${title}`);
+    steps?.set({
+      id: `decision:${title}`,
+      label: `🗂 ${title}`,
+      status: "done",
+      detail: "Logged to the project's Decisions",
+      tone: "blue",
+    });
+  }
+  return count;
+}
+
 async function execute(
   agent: AgentRow,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -308,10 +424,20 @@ async function execute(
 ): Promise<RunOutcome> {
   switch (agent.type) {
     case "scrum": {
-      const t = config.transcriptName
-        ? readTranscript(config.transcriptName)
-        : latestTranscript();
-      if (!t) throw new Error("No transcript found in TRANSCRIPTS_DIR.");
+      // Folder-watch model: the agent is bound to a folder; a run processes one
+      // transcript (config.transcriptName, set by the scan) from that folder.
+      const folder = config.folder
+        ? path.resolve(process.cwd(), String(config.folder))
+        : null;
+      const t = folder
+        ? config.transcriptName
+          ? readTranscriptFile(path.join(folder, config.transcriptName))
+          : latestTranscriptIn(folder)
+        : config.transcriptName
+          ? readTranscript(config.transcriptName)
+          : latestTranscript();
+      if (!t) throw new Error("No transcript found in the watched folder.");
+      const steps = makeStepTracker(runId);
       log.phase(`Reading standup transcript "${t.name}"`);
 
       // Token filter: only touch tickets actually mentioned in the transcript.
@@ -321,6 +447,8 @@ async function execute(
           "No ticket keys (e.g. CRM360-12) mentioned in the transcript."
         );
       log.line(`Detected ${keys.length} ticket(s): ${keys.join(", ")}`);
+      for (const k of keys)
+        steps.set({ id: k, label: k, status: "running", detail: "analyzing…" });
 
       // Fetch just those tickets for grounding context (not the whole board).
       const projectKey =
@@ -356,20 +484,43 @@ async function execute(
           ? parsed.updates
           : [];
         const posted: string[] = [];
+        const updatedKeys = new Set<string>();
         for (const u of updates) {
           const key = String(u?.ticketKey || "").trim().toUpperCase();
           const comment = String(u?.comment || "").trim();
           if (!key || !comment) continue;
+          updatedKeys.add(key);
           log.phase(`Posting update to ${key}`);
+          const summary = String(
+            (u as { summary?: string })?.summary || "Update posted"
+          ).slice(0, 140);
           try {
             await jiraComment(key, comment);
             posted.push(key);
+            steps.set({ id: key, label: key, status: "done", detail: summary, tone: "green" });
           } catch (e) {
             log.line(`  ✖ failed to comment on ${key}: ${(e as Error).message}`);
+            steps.set({ id: key, label: key, status: "fail", detail: (e as Error).message, tone: "red" });
           }
         }
+        // Tickets mentioned but not updated (nothing new to report).
+        for (const k of keys)
+          if (!updatedKeys.has(k))
+            steps.set({ id: k, label: k, status: "skipped", detail: "No update needed", tone: "gray" });
+
+        // Record any decisions the standup captured into the project decision log.
+        const decisionsRecorded = recordDecisions(
+          Array.isArray(parsed?.decisions) ? parsed.decisions : [],
+          agent.project_id,
+          t.name,
+          log,
+          steps
+        );
+
+        const out = structuredResult(parsed, result);
+        if (decisionsRecorded) out.decisionsRecorded = decisionsRecorded;
         return {
-          result: structuredResult(parsed, result),
+          result: out,
           jira_ref: posted.join(", ") || null,
           pr_ref: null,
         };
@@ -458,6 +609,46 @@ async function execute(
         });
         const result = await runClaudeAgent(prompt, workdir, log);
         const parsed = extractJson(result);
+
+        // Structured finding cards for the non-technical live view.
+        const steps = makeStepTracker(runId);
+        const findings: {
+          title?: string;
+          severity?: string;
+          location?: string;
+          detail?: string;
+        }[] = Array.isArray(parsed?.findings) ? parsed.findings : [];
+        if (findings.length) {
+          findings.forEach((f, i) => {
+            const sev = String(f?.severity || "").toLowerCase();
+            const tone =
+              sev === "critical" || sev === "high"
+                ? "red"
+                : sev === "medium"
+                  ? "amber"
+                  : sev === "low"
+                    ? "blue"
+                    : "gray";
+            steps.set({
+              id: `f${i}`,
+              label: f?.title || `Finding ${i + 1}`,
+              status: "fail",
+              detail: [f?.severity ? `[${f.severity}]` : "", f?.location, f?.detail]
+                .filter(Boolean)
+                .join(" · "),
+              tone: tone as StepCard["tone"],
+            });
+          });
+        } else {
+          steps.set({
+            id: "clean",
+            label: "No vulnerabilities found",
+            status: "done",
+            detail: "The diff looks clean.",
+            tone: "green",
+          });
+        }
+
         const comment = resolveComment(parsed, result);
         let pr_ref: string | null = null;
         if (comment) {

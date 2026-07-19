@@ -26,6 +26,7 @@ export async function GET(
       log: run.log || "",
       result: run.result ? JSON.parse(run.result) : null,
       tests: run.tests_json ? JSON.parse(run.tests_json) : [],
+      steps: run.steps_json ? JSON.parse(run.steps_json) : [],
       jira_ref: run.jira_ref,
       pr_ref: run.pr_ref,
     },

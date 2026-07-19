@@ -60,3 +60,35 @@ export function readTranscript(name: string): { name: string; text: string } | n
   if (!fs.existsSync(p)) return null;
   return { name, text: stripTranscript(fs.readFileSync(p, "utf8")) };
 }
+
+/** List transcript files in an arbitrary folder (newest first). */
+export function listTranscriptsIn(dir: string): TranscriptFile[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((f) => /\.(txt|md|vtt|srt)$/i.test(f))
+    .map((f) => {
+      const p = path.join(dir, f);
+      return { name: f, path: p, mtime: fs.statSync(p).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
+/** Read a transcript by absolute/relative file path. */
+export function readTranscriptFile(
+  fullPath: string
+): { name: string; text: string } | null {
+  if (!fs.existsSync(fullPath)) return null;
+  return {
+    name: path.basename(fullPath),
+    text: stripTranscript(fs.readFileSync(fullPath, "utf8")),
+  };
+}
+
+/** Read the newest transcript in a folder, or null. */
+export function latestTranscriptIn(
+  dir: string
+): { name: string; text: string } | null {
+  const files = listTranscriptsIn(dir);
+  return files.length ? readTranscriptFile(files[0].path) : null;
+}

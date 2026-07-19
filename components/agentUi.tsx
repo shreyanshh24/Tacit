@@ -12,7 +12,7 @@ export const TYPE_LABEL: Record<AgentType, string> = {
 
 export const TYPE_DESC: Record<AgentType, string> = {
   scrum:
-    "Reads a standup transcript and automatically posts a progress update to every Jira ticket mentioned in it.",
+    "Reads a standup transcript, posts a progress update to every Jira ticket mentioned, and logs any decisions it captures to the project's Decisions.",
   tester:
     "Clones a branch, generates and runs the ticket's tests, and posts a pass/fail verdict to Jira.",
   pr_security:
@@ -34,6 +34,7 @@ export interface RunResult {
     detail?: string;
   }[];
   updates?: { ticketKey?: string; summary?: string; comment?: string }[];
+  decisionsRecorded?: number;
 }
 
 export type Tone = "green" | "red" | "amber" | "blue" | "gray";
@@ -189,6 +190,78 @@ function TestCard({ test }: { test: TestCase }) {
   );
 }
 
+export interface StepCard {
+  id: string;
+  label: string;
+  status: "running" | "done" | "fail" | "skipped" | "info";
+  detail?: string;
+  tone?: "green" | "red" | "amber" | "blue" | "gray";
+}
+
+/** Non-technical live view for Scrum / PR-Security: outcome cards. */
+export function StepGrid({
+  steps,
+  running,
+  emptyLabel,
+}: {
+  steps: StepCard[];
+  running: boolean;
+  emptyLabel?: string;
+}) {
+  if (steps.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/[0.06] bg-black/20 p-6 text-center text-[13px] text-neutral-400">
+        {running ? (
+          <span className="animate-pulse">{emptyLabel ?? "Working…"}</span>
+        ) : (
+          "Nothing yet."
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {steps.map((s) => (
+        <StepCardView key={s.id} step={s} />
+      ))}
+    </div>
+  );
+}
+
+function StepCardView({ step }: { step: StepCard }) {
+  const toneBox: Record<string, string> = {
+    green: "border-emerald-500/30 bg-emerald-500/[0.07]",
+    red: "border-red-500/30 bg-red-500/[0.07]",
+    amber: "border-amber-400/30 bg-amber-400/[0.06]",
+    blue: "border-sky-500/30 bg-sky-500/[0.07]",
+    gray: "border-white/[0.08] bg-white/[0.02]",
+  };
+  const icon: Record<StepCard["status"], string> = {
+    running: "⋯",
+    done: "✓",
+    fail: "✗",
+    skipped: "—",
+    info: "•",
+  };
+  const box =
+    step.status === "running"
+      ? "border-amber-400/30 bg-amber-400/[0.06] animate-pulse"
+      : toneBox[step.tone ?? "gray"] ?? toneBox.gray;
+  return (
+    <div className={`flex gap-2.5 rounded-lg border p-3 ${box}`}>
+      <span className="mt-0.5 text-[15px] leading-none text-neutral-200">
+        {icon[step.status]}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-neutral-100">{step.label}</p>
+        {step.detail && (
+          <p className="mt-0.5 text-[12px] leading-snug text-neutral-400">{step.detail}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** A live, auto-scrolling terminal that renders the agent run log with light styling. */
 export function LogTerminal({ log, live }: { log: string; live?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -279,6 +352,13 @@ export function ResultView({
           ))}
         </ul>
       )}
+
+      {res.decisionsRecorded ? (
+        <p className="text-[12px] text-sky-300">
+          🗂 Recorded {res.decisionsRecorded} decision
+          {res.decisionsRecorded === 1 ? "" : "s"} to the project&apos;s Decisions log.
+        </p>
+      ) : null}
 
       {res.updates && res.updates.length > 0 && (
         <div className="space-y-2">

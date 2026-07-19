@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
-import { getDb, ChatMessageRow } from "@/lib/db";
+import { getDb, ChatMessageRow, ChatConversationRow } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Fetch a conversation's messages (oldest first). */
+/** Fetch a conversation's messages (oldest first), with live status for resume. */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const db = getDb();
+  const conv = db
+    .prepare("SELECT * FROM chat_conversations WHERE id = ?")
+    .get(Number(id)) as ChatConversationRow | undefined;
+
   const rows = db
     .prepare(
       "SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY id ASC"
@@ -20,9 +24,10 @@ export async function GET(
   const messages = rows.map((r) => {
     let sources = null;
     let cards = null;
-    if (r.sources) {
+    const metaStr = r.meta ?? r.sources; // meta for new rows, sources for legacy
+    if (metaStr) {
       try {
-        const parsed = JSON.parse(r.sources);
+        const parsed = JSON.parse(metaStr);
         sources = parsed?.sources ?? null;
         cards = parsed?.cards ?? null;
       } catch {
@@ -34,9 +39,15 @@ export async function GET(
       role: r.role,
       mode: r.mode,
       content: r.content ?? "",
+      status: r.status ?? "done",
       sources,
       cards,
     };
   });
-  return NextResponse.json({ messages });
+
+  return NextResponse.json({
+    id: Number(id),
+    title: conv?.title ?? null,
+    messages,
+  });
 }

@@ -39,6 +39,27 @@ export default function SettingsPage() {
     }
   }
 
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  async function syncSources() {
+    setBusy("sync");
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/sources/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncMsg(data.error || "Sync failed");
+        return;
+      }
+      setSyncMsg(
+        `Synced ${data.docs} repo docs, ${data.drive} Drive docs, ${data.transcript} transcripts` +
+          (data.skipped ? ` (${data.skipped} duplicates skipped)` : "") +
+          (data.decisions != null ? ` · re-extracted ${data.decisions} decisions` : "")
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function deleteProject() {
     if (!project) return;
     if (!confirm(`Delete project "${project.name}" and all its memory? This cannot be undone.`)) return;
@@ -131,6 +152,25 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Knowledge sources */}
+      <section className="mb-10 rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <p className="mb-1 text-sm font-semibold text-neutral-100">Knowledge sources</p>
+        <p className="mb-4 text-[13px] text-neutral-500">
+          Re-ingest this project&apos;s memory from the Google Drive docs, local transcripts,
+          and the repo <code>docs/</code> on main — then re-extract decisions.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={syncSources}
+            disabled={busy === "sync"}
+            className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-[#0a0a0c] disabled:opacity-50"
+          >
+            {busy === "sync" ? "Syncing…" : "Sync sources"}
+          </button>
+          {syncMsg && <span className="text-[12px] text-neutral-400">{syncMsg}</span>}
+        </div>
+      </section>
+
       {/* Danger zone */}
       <section className="rounded-xl border border-red-500/20 bg-red-500/[0.03] p-5">
         <p className="mb-1 text-sm font-semibold text-red-300">Danger zone</p>
@@ -141,7 +181,7 @@ export default function SettingsPage() {
             <div>
               <p className="text-sm text-neutral-200">Delete this project</p>
               <p className="text-[12px] text-neutral-500">
-                {project?.name} — removes its memory, decisions and interviews.
+                {project?.name} — removes its memory and decisions.
               </p>
             </div>
             <button

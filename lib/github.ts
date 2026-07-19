@@ -70,6 +70,53 @@ export async function listOpenPRs(repo = DEFAULT_REPO): Promise<PullRequest[]> {
   }));
 }
 
+/** List every file path in the repo at a ref (recursive git tree). */
+export async function listRepoFiles(
+  ref: string,
+  repo = DEFAULT_REPO
+): Promise<string[]> {
+  try {
+    const out = await run(
+      "gh",
+      [
+        "api",
+        `repos/${repo}/git/trees/${ref}?recursive=1`,
+        "-q",
+        '.tree[] | select(.type=="blob") | .path',
+      ],
+      { timeoutMs: 30_000 }
+    );
+    return out
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch a single file's raw text content at a ref, or null if missing. */
+export async function getFileContent(
+  path: string,
+  ref: string,
+  repo = DEFAULT_REPO
+): Promise<string | null> {
+  try {
+    return await run(
+      "gh",
+      [
+        "api",
+        "-H",
+        "Accept: application/vnd.github.raw",
+        `repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(ref)}`,
+      ],
+      { timeoutMs: 30_000 }
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** List branch names on the repo (via the gh API), newest activity first-ish. */
 export async function listBranches(repo = DEFAULT_REPO): Promise<string[]> {
   try {
