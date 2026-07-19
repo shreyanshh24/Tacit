@@ -11,9 +11,9 @@ interface ConnStatus {
   jira_project_key: string | null;
 }
 
-export default function ConnectJira() {
+export default function ConnectJira({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { isOwner, project, refresh } = useSession();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [status, setStatus] = useState<ConnStatus | null>(null);
 
   // connection form

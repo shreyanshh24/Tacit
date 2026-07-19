@@ -4,8 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "./SessionProvider";
+import ProjectSwitcher from "./ProjectSwitcher";
 
 const TOP_LINKS = [
+  { href: "/jira", label: "Jira" },
   { href: "/decisions", label: "Decisions" },
   { href: "/interviewer", label: "Interviewer" },
   { href: "/activity", label: "Activity" },
@@ -29,13 +31,7 @@ export default function TopBar() {
       <div className="flex min-w-0 items-center gap-2 text-sm">
         <span className="truncate text-neutral-500">{team?.name}</span>
         <span className="text-neutral-700">/</span>
-        <button
-          onClick={() => setSession({ projectId: null })}
-          className="flex items-center gap-2 truncate font-medium text-neutral-200 hover:text-amber-300"
-          title="Switch project"
-        >
-          {project?.name}
-        </button>
+        <ProjectSwitcher />
         {isOwner && (
           <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
             owner
