@@ -34,6 +34,48 @@ const EXAMPLES = [
   "Show me the recorded decisions.",
 ];
 
+// Every capability Chat can auto-route to, grouped for the "Prompt ideas" panel.
+const CATEGORY_STYLE: Record<string, string> = {
+  Memory: "bg-sky-500/15 text-sky-300",
+  Status: "bg-indigo-500/15 text-indigo-300",
+  Codebase: "bg-violet-500/15 text-violet-300",
+  Foresight: "bg-fuchsia-500/15 text-fuchsia-300",
+  Assumptions: "bg-amber-500/15 text-amber-300",
+  Decisions: "bg-emerald-500/15 text-emerald-300",
+  Capture: "bg-teal-500/15 text-teal-300",
+  General: "bg-white/10 text-neutral-300",
+};
+
+const PROMPT_IDEAS: { category: string; prompt: string }[] = [
+  { category: "Memory", prompt: "Why did we kill the App Marketplace?" },
+  { category: "Memory", prompt: "What caused the September sync outage and how do we prevent it?" },
+  { category: "Memory", prompt: "Why did we choose PostgreSQL over MongoDB?" },
+  { category: "Status", prompt: "What happened with the contacts & accounts work (CRM360-22)?" },
+  { category: "Status", prompt: "Do you think CRM360-24 (two-way email sync) is resolved?" },
+  { category: "Status", prompt: "What's blocking the deal pipeline feature right now?" },
+  { category: "Codebase", prompt: "How does multi-tenancy isolation work in CRM360?" },
+  { category: "Codebase", prompt: "What's the async job queue design and why was it added?" },
+  { category: "Codebase", prompt: "What's the design of the AI agent marketplace feature branch?" },
+  { category: "Foresight", prompt: "Run a pre-mortem: launch a self-serve AI Agent Marketplace where partners publish plugins on our public API, with no manual review." },
+  { category: "Foresight", prompt: "Pre-mortem: ship a CSV export that includes every field by default." },
+  { category: "Assumptions", prompt: "Surface the assumptions in: we'll add real-time collaborative record editing for all tenants by Q4." },
+  { category: "Decisions", prompt: "Show me the recorded decisions." },
+  { category: "Capture", prompt: "Capture: we're deferring Outlook email sync until IT approves the app registration. Owner: Deepa." },
+  { category: "General", prompt: "What can you do?" },
+];
+
+function CategoryTag({ category }: { category: string }) {
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        CATEGORY_STYLE[category] ?? CATEGORY_STYLE.General
+      }`}
+    >
+      {category}
+    </span>
+  );
+}
+
 export default function ChatPage() {
   const { project } = useSession();
   const { register } = useSources();
@@ -45,6 +87,7 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showHints, setShowHints] = useState(false);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -208,12 +251,20 @@ export default function ChatPage() {
               Ask, analyze, and capture — {project?.name ?? "this project"}
             </p>
           </div>
-          <button
-            onClick={newChat}
-            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/5 md:hidden"
-          >
-            + New
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHints((s) => !s)}
+              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/5"
+            >
+              💡 Prompt ideas
+            </button>
+            <button
+              onClick={newChat}
+              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/5 md:hidden"
+            >
+              + New
+            </button>
+          </div>
         </div>
 
         <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
@@ -240,13 +291,44 @@ export default function ChatPage() {
           ) : (
             messages.map((m, i) => (
               <MessageView
-                key={m.id ?? i}
+                key={m.id ?? `tmp-${i}`}
                 msg={m}
                 streaming={m.role === "assistant" && m.status === "streaming"}
               />
             ))
           )}
         </div>
+
+        {showHints && (
+          <div className="mx-6 mb-2 max-h-[45vh] overflow-y-auto rounded-xl border border-white/10 bg-[#0d0d10] p-3 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[12px] font-medium text-neutral-200">
+                Prompt ideas — chat auto-routes each to the right capability
+              </p>
+              <button
+                onClick={() => setShowHints(false)}
+                className="text-[11px] text-neutral-500 hover:text-neutral-300"
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {PROMPT_IDEAS.map((p) => (
+                <button
+                  key={p.prompt}
+                  onClick={() => {
+                    setShowHints(false);
+                    send(p.prompt);
+                  }}
+                  className="flex w-full items-start gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-left hover:border-amber-400/30 hover:bg-white/[0.04]"
+                >
+                  <CategoryTag category={p.category} />
+                  <span className="text-[13px] text-neutral-300">{p.prompt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="border-t border-white/[0.06] px-6 py-4">
           <div className="flex items-end gap-2">

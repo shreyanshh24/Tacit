@@ -2,12 +2,12 @@
 // unified /api/chat router. Each returns a HandlerResult describing what to send
 // back to the client (a streamed LLM answer, structured cards, or static text).
 
-import { search, formatChunks } from "./retrieval";
+import { search, formatChunks, type RetrievedDoc } from "./retrieval";
 import { getBranchDocChunks } from "./repoDocs";
 import { memoryPrompt, foresightPrompt, assumptionsPrompt } from "./prompts";
 import { generateJSON } from "./llm";
 import { embed } from "./embeddings";
-import { getDb, DecisionRow, ProjectRow } from "./db";
+import { getDb, DecisionRow, DocumentRow, ProjectRow } from "./db";
 import { logActivity } from "./activity";
 import { jiraIssueUrl } from "./jira";
 import { getSession } from "./session";
@@ -61,6 +61,69 @@ function mapSources(
   }));
 }
 
+function toRetrieved(row: DocumentRow): RetrievedDoc {
+  return {
+    id: row.id,
+    source: row.source,
+    source_id: row.source_id,
+    author: row.author,
+    ts: row.ts,
+    title: row.title,
+    content: row.content,
+    score: 1,
+    linked_jira_key: row.linked_jira_key ?? null,
+    linked_jira_url: row.linked_jira_url ?? null,
+  };
+}
+
+/**
+ * When a question names ticket keys (e.g. CRM360-22), guarantee those exact
+ * tickets — and documents that mention them (standups, docs) — are in context,
+ * regardless of embedding rank. Makes "is X resolved?" / "what happened to X?"
+ * reliable.
+ */
+function keyBoostDocs(question: string, projectId: number | null): RetrievedDoc[] {
+  const keys = Array.from(
+    new Set(question.toUpperCase().match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || [])
+  );
+  if (!keys.length) return [];
+  const db = getDb();
+  const out: RetrievedDoc[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    const exact = db
+      .prepare("SELECT * FROM documents WHERE project_id IS ? AND source_id = ? LIMIT 1")
+      .get(projectId, key) as DocumentRow | undefined;
+    const mentions = db
+      .prepare(
+        "SELECT * FROM documents WHERE project_id IS ? AND source_id <> ? AND content LIKE ? LIMIT 3"
+      )
+      .all(projectId, key, `%${key}%`) as DocumentRow[];
+    for (const row of [exact, ...mentions].filter(Boolean) as DocumentRow[]) {
+      const sid = row.source_id ?? String(row.id);
+      if (seen.has(sid)) continue;
+      seen.add(sid);
+      out.push(toRetrieved(row));
+    }
+  }
+  return out;
+}
+
+/** Merge doc lists, dedupe by source_id, cap total to bound the prompt. */
+function mergeDocs(lists: RetrievedDoc[][], cap = 10): RetrievedDoc[] {
+  const seen = new Set<string>();
+  const out: RetrievedDoc[] = [];
+  for (const list of lists)
+    for (const d of list) {
+      const sid = d.source_id ?? String(d.id);
+      if (seen.has(sid)) continue;
+      seen.add(sid);
+      out.push(d);
+      if (out.length >= cap) return out;
+    }
+  return out;
+}
+
 /** Memory: retrieve project context and stream a cited answer. */
 export async function runMemory(
   question: string,
@@ -70,7 +133,8 @@ export async function runMemory(
     search(question, 8, session.projectId),
     getBranchDocChunks(question),
   ]);
-  const docs = [...branchDocs, ...hits];
+  const boost = keyBoostDocs(question, session.projectId ?? null);
+  const docs = mergeDocs([boost, branchDocs, hits], 10);
   await logActivity({ type: "memory", title: question });
   return {
     mode: "memory",

@@ -64,6 +64,12 @@ export default function AgentDetailPage() {
     return d;
   }, [id]);
 
+  async function deleteAgent() {
+    if (!confirm("Delete this agent and all its runs? This cannot be undone.")) return;
+    await fetch(`/api/agents/${id}`, { method: "DELETE" });
+    router.push("/agents");
+  }
+
   const scan = useCallback(async () => {
     setScanning(true);
     try {
@@ -328,6 +334,15 @@ export default function AgentDetailPage() {
           </div>
         </div>
       )}
+
+      <div className="mt-10 border-t border-white/[0.06] pt-4">
+        <button
+          onClick={deleteAgent}
+          className="rounded-lg border border-red-500/25 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10"
+        >
+          Delete agent
+        </button>
+      </div>
     </div>
   );
 }
