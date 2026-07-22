@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tacit — Pitch</title>
+<meta name="description" content="Tacit — the single source of truth for your project's knowledge, with autonomous agents that act on it." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #070708;
+    --fg: #ececed;
+    --muted: #8a8a90;
+    --faint: #5a5a60;
+    --amber: #fbbf24;
+    --amber-soft: rgba(251, 191, 36, 0.15);
+    --line: rgba(255, 255, 255, 0.08);
+    --card: rgba(255, 255, 255, 0.03);
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ::selection { background: rgba(251, 191, 36, 0.25); color: #fff; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+  /* Ambient amber glow — mirrors the app */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 78% -10%, rgba(251, 191, 36, 0.10), transparent 60%),
+      radial-gradient(50rem 40rem at 10% 110%, rgba(120, 113, 108, 0.07), transparent 60%);
+  }
+
+  #deck { position: relative; z-index: 1; height: 100%; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2rem, 7vw, 8rem);
+  }
+  .slide.active { display: flex; opacity: 1; }
+  .slide.active .fade { animation: fade 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .slide.active .fade:nth-child(2) { animation-delay: 0.06s; }
+  .slide.active .fade:nth-child(3) { animation-delay: 0.12s; }
+  .slide.active .fade:nth-child(4) { animation-delay: 0.18s; }
+  .slide.active .fade:nth-child(5) { animation-delay: 0.24s; }
+  .slide.active .fade:nth-child(6) { animation-delay: 0.30s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 1.4rem;
+  }
+  h1 { font-size: clamp(3.5rem, 11vw, 9rem); font-weight: 600; letter-spacing: -0.04em; line-height: 0.95; }
+  h2 { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+  .lead { font-size: clamp(1.05rem, 2vw, 1.5rem); color: var(--muted); max-width: 46ch; line-height: 1.5; margin-top: 1.4rem; }
+  .amber { color: var(--amber); }
+  h1, h2, .lead, .kicker { text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 2.6rem; }
+  .pill {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .pill.amber { background: var(--amber-soft); border-color: transparent; color: var(--amber); }
+
+  ul.points { list-style: none; margin-top: 2.4rem; display: grid; gap: 1.05rem; max-width: 62ch; }
+  ul.points li { display: flex; gap: 0.9rem; font-size: clamp(1rem, 1.9vw, 1.35rem); line-height: 1.4; color: #d4d4d8; }
+  ul.points li b { color: var(--fg); font-weight: 600; }
+  ul.points li .mk { color: var(--amber); font-family: var(--mono); flex: none; margin-top: 0.15em; }
+
+  /* pipeline (how it works) */
+  .flow { margin-top: 2.8rem; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.6rem; }
+  .node {
+    background: var(--card); border: 1px solid var(--line); border-radius: 0.8rem;
+    padding: 0.85rem 1rem; min-width: 8.5rem;
+  }
+  .node .n-label { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+  .node .n-title { font-size: 0.98rem; font-weight: 500; margin-top: 0.3rem; }
+  .node .n-sub { font-size: 0.76rem; color: var(--muted); margin-top: 0.2rem; }
+  .node.hot { border-color: rgba(251,191,36,0.4); background: var(--amber-soft); }
+  .arrow { align-self: center; color: var(--faint); font-family: var(--mono); }
+  .flow-note { margin-top: 1.8rem; font-size: 0.95rem; color: var(--muted); max-width: 60ch; line-height: 1.5; }
+  .flow-note code { font-family: var(--mono); color: var(--amber); font-size: 0.85em; }
+
+  /* chat capabilities + agents (detail slides) */
+  .caps { margin-top: 1.8rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; max-width: 68rem; width: 100%; }
+  .cap { border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: 0.9rem; background: rgba(12, 12, 16, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 1rem 1.1rem; }
+  .cap-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem; }
+  .cap-title { font-size: 1.02rem; font-weight: 600; }
+  .cap-tag { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); padding: 0.15rem 0.4rem; border: 1px solid var(--line); border-radius: 0.35rem; white-space: nowrap; }
+  .cap-desc { font-size: 0.83rem; color: var(--muted); line-height: 1.42; }
+  .cap-desc b { color: var(--fg); font-weight: 600; }
+  .cap-slash { font-family: var(--mono); font-size: 0.72rem; color: var(--amber); margin-top: 0.55rem; }
+  .c-mem { border-left-color: #38bdf8; } .c-fore { border-left-color: #e879f9; } .c-assume { border-left-color: #fbbf24; }
+  .c-dec { border-left-color: #34d399; } .c-cap { border-left-color: #2dd4bf; } .c-int { border-left-color: #a3a3f0; }
+
+  .agents { margin-top: 1.9rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; max-width: 66rem; width: 100%; }
+  .agent { border: 1px solid var(--line); border-top: 3px solid var(--faint); border-radius: 0.95rem; background: rgba(12, 12, 16, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 1.2rem 1.25rem; display: flex; flex-direction: column; gap: 0.55rem; }
+  .agent.a-test { border-top-color: #a78bfa; } .agent.a-sec { border-top-color: #f472b6; } .agent.a-scrum { border-top-color: #818cf8; }
+  .badge { align-self: flex-start; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.22rem 0.5rem; border-radius: 0.35rem; background: var(--amber-soft); color: var(--amber); }
+  .agent-title { font-size: 1.12rem; font-weight: 600; }
+  .agent-desc { font-size: 0.84rem; color: var(--muted); line-height: 1.46; }
+  .agent-desc b { color: var(--fg); font-weight: 600; }
+  .agent-out { font-size: 0.8rem; color: #d4d4d8; }
+  .agent-out b { color: var(--amber); font-weight: 500; }
+  .tools { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: auto; padding-top: 0.5rem; }
+  .tool { font-family: var(--mono); font-size: 0.64rem; padding: 0.14rem 0.42rem; border-radius: 0.3rem; background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--line); }
+
+  /* bottom-right nav buttons */
+  .right { display: flex; align-items: center; gap: 0.9rem; pointer-events: auto; }
+  .navbtns { display: flex; gap: 0.4rem; }
+  .navbtns button { width: 2rem; height: 2rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 0.95rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; transition: border-color 0.15s, color 0.15s; }
+  .navbtns button:hover:not(:disabled) { border-color: rgba(251,191,36,0.5); color: var(--amber); }
+  .navbtns button:disabled { opacity: 0.3; cursor: default; }
+
+  /* split layout: text + visual */
+  .split { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(1.5rem, 4vw, 4.5rem); align-items: center; width: 100%; }
+  .col-text { min-width: 0; background: rgba(7, 7, 8, 0.52); backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px); border: 1px solid var(--line); border-radius: 1.3rem; padding: clamp(1.4rem, 3vw, 2.4rem) clamp(1.5rem, 3vw, 2.6rem); }
+  .col-visual { display: flex; align-items: center; justify-content: center; background: rgba(7, 7, 8, 0.5); backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px); border: 1px solid var(--line); border-radius: 1.3rem; padding: clamp(1.6rem, 3.5vw, 3rem); }
+
+  /* source marks */
+  .src { display: flex; flex-direction: column; align-items: center; gap: 0.42rem; }
+  .src-ico { width: 3.4rem; height: 3.4rem; border-radius: 0.9rem; border: 1px solid var(--line); background: #0d0d11; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 26px -14px rgba(0,0,0,0.9); }
+  .src-ico svg { width: 1.75rem; height: 1.75rem; }
+  .src-label { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; color: #cfcfd4; background: rgba(7, 7, 8, 0.6); padding: 0.16rem 0.45rem; border-radius: 0.35rem; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+
+  /* viz container: scatter (problem) + hub (solution) */
+  .viz { position: relative; width: clamp(19rem, 38vw, 25rem); aspect-ratio: 384 / 352; }
+  .viz svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .viz .node { position: absolute; transform: translate(-50%, -50%); }
+  .viz .node.spin { transition: none; }
+  .viz .core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; justify-content: center; width: 6.6rem; height: 6.6rem; border-radius: 999px; background: radial-gradient(circle at 50% 38%, rgba(251,191,36,0.38), rgba(251,191,36,0.06) 72%); border: 1px solid rgba(251,191,36,0.55); box-shadow: 0 0 64px -6px rgba(251,191,36,0.4); }
+  .viz .core .core-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+  .viz .core .core-sub { font-family: var(--mono); font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); margin-top: 0.1rem; }
+  .viz .qmark { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 8rem; font-weight: 700; color: rgba(251,191,36,0.09); }
+
+  /* title knowledge graph */
+  .graph { width: clamp(17rem, 34vw, 23rem); height: auto; overflow: visible; }
+  .graph .lnk { stroke: rgba(255,255,255,0.09); stroke-width: 1; }
+  .graph .nd { fill: #26262c; }
+  .graph .nd.hot { fill: var(--amber); animation: gpulse 2.8s ease-in-out infinite; }
+  .graph .nd.hot.d1 { animation-delay: 0.5s; } .graph .nd.hot.d2 { animation-delay: 1s; }
+  .graph .nd.hot.d3 { animation-delay: 1.5s; } .graph .nd.hot.d4 { animation-delay: 2s; }
+  @keyframes gpulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  @media (max-width: 1024px) {
+    .split { grid-template-columns: 1fr; }
+    .col-visual { display: none; }
+  }
+
+  /* demo mock */
+  .mock {
+    margin-top: 2rem; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden;
+    background: #08080a; max-width: 62rem; width: 100%;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.8);
+  }
+  .mock-bar { display: flex; align-items: center; gap: 0.6rem; height: 2.6rem; padding: 0 1rem; border-bottom: 1px solid var(--line); background: rgba(8,8,10,0.8); }
+  .mock-bar .dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; background: #2a2a30; }
+  .mock-bar .path { margin-left: 0.6rem; font-size: 0.78rem; color: var(--muted); }
+  .mock-bar .path .sep { color: #3a3a40; margin: 0 0.4rem; }
+  .mock-body { display: grid; grid-template-columns: 8.5rem 1fr; min-height: 17rem; }
+  .mock-nav { border-right: 1px solid var(--line); padding: 0.9rem 0.7rem; display: flex; flex-direction: column; gap: 0.35rem; }
+  .nav-item { font-size: 0.82rem; color: var(--muted); padding: 0.4rem 0.6rem; border-radius: 0.5rem; }
+  .nav-item.active { background: var(--amber-soft); color: var(--amber); }
+  .mock-chat { padding: 1.1rem 1.3rem; display: flex; flex-direction: column; gap: 0.9rem; }
+  .bubble-user { align-self: flex-end; background: var(--amber-soft); color: #fde9b8; border-radius: 0.9rem 0.9rem 0.2rem 0.9rem; padding: 0.55rem 0.85rem; font-size: 0.85rem; max-width: 80%; }
+  .bubble-ai { background: var(--card); border: 1px solid var(--line); border-radius: 0.9rem 0.9rem 0.9rem 0.2rem; padding: 0.7rem 0.9rem; font-size: 0.85rem; line-height: 1.45; color: #d4d4d8; max-width: 90%; }
+  .bubble-ai .cite { color: var(--amber); font-family: var(--mono); font-size: 0.72rem; text-decoration: none; }
+  .chips { display: flex; gap: 0.35rem; margin-top: 0.2rem; }
+  .chip { font-size: 0.64rem; padding: 0.15rem 0.45rem; border-radius: 0.35rem; font-family: var(--mono); }
+  .chip.mem { background: rgba(56,189,248,0.15); color: #7dd3fc; }
+  .chip.fore { background: rgba(217,70,239,0.15); color: #e879f9; }
+  .chip.dec { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+
+  /* footer chrome */
+  .chrome { position: fixed; z-index: 5; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; padding: 1.1rem clamp(2rem, 7vw, 8rem); pointer-events: none; }
+  .brand { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); }
+  .brand b { color: var(--amber); font-weight: 500; }
+  .dots { display: flex; gap: 0.5rem; pointer-events: auto; }
+  .dots button { width: 0.5rem; height: 0.5rem; border-radius: 999px; border: none; background: #2a2a30; cursor: pointer; padding: 0; transition: all 0.2s; }
+  .dots button.on { background: var(--amber); width: 1.4rem; }
+  .count { font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
+  .hint { position: fixed; z-index: 5; top: 1.1rem; right: clamp(2rem, 7vw, 8rem); font-family: var(--mono); font-size: 0.68rem; color: #3a3a40; }
+
+  @media (max-width: 640px) {
+    .mock-body { grid-template-columns: 1fr; }
+    .mock-nav { display: none; }
+    ul.points li { font-size: 1rem; }
+    .caps, .agents { grid-template-columns: 1fr; }
+  }
+
+  @media (min-width: 641px) and (max-width: 1024px) {
+    .caps, .agents { grid-template-columns: 1fr 1fr; }
+  }
+  /* team credit on title */
+  .team { margin-top: 2rem; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--faint); }
+  .team b { color: var(--amber); font-weight: 500; }
+
+  /* neuro-noise shader background (paper.design). Revert = delete #shader-bg/#shader-veil divs, this CSS, and the shader module script. */
+  #shader-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.7; }
+  #shader-bg canvas { width: 100% !important; height: 100% !important; display: block; }
+  #shader-veil { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(7,7,8,0.9) 0%, rgba(7,7,8,0.6) 50%, rgba(7,7,8,0.42) 100%); }
+</style>
+</head>
+<body>
+  <!-- neuro-noise shader background (paper.design) -->
+  <div id="shader-bg" aria-hidden="true"></div>
+  <div id="shader-veil" aria-hidden="true"></div>
+  <div class="hint">← → / space</div>
+
+  <!-- source logo symbols -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ic-jira" viewBox="0 0 32 32">
+      <path fill="#2684FF" d="M30.3 15.3 16.7 1.7 15.4.4 5.2 10.6.5 15.3a1 1 0 0 0 0 1.4l9.4 9.4 5.5 5.5 10.2-10.2.2-.2 4.3-4.3a1 1 0 0 0 0-1.4ZM15.4 20.9l-4.7-4.7 4.7-4.7 4.7 4.7Z"/>
+      <path fill="#0052CC" d="M15.4 11.5a7.9 7.9 0 0 1 0-11.1L5.2 10.6l5.5 5.5Z"/>
+      <path fill="#0052CC" d="M20.1 16.2 15.4 20.9a7.9 7.9 0 0 1 0 11.1l10.2-10.2Z"/>
+    </symbol>
+    <symbol id="ic-drive" viewBox="0 0 87.3 78">
+      <path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/>
+      <path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z"/>
+      <path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"/>
+      <path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/>
+      <path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/>
+      <path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/>
+    </symbol>
+    <symbol id="ic-github" viewBox="0 0 16 16">
+      <path fill="#e6e6e6" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </symbol>
+    <symbol id="ic-talks" viewBox="0 0 24 24">
+      <g fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></g>
+    </symbol>
+  </svg>
+
+  <main id="deck">
+    <!-- 1 · Title -->
+    <section class="slide" data-slide>
+      <div class="col-text" style="max-width:48rem">
+        <div class="fade kicker">Single source of project knowledge · autonomous agents</div>
+        <h1 class="fade">Tacit</h1>
+        <p class="fade lead">The <span class="amber">single source of truth</span> for everything your team knows. Tacit unifies scattered project knowledge — tickets, docs, transcripts, code — into one queryable place, and runs agents that act on it.</p>
+        <div class="fade tags">
+          <span class="pill amber">One source of truth</span>
+          <span class="pill">Cited answers</span>
+          <span class="pill">Hidden assumptions</span>
+          <span class="pill">Autonomous agents</span>
+        </div>
+        <div class="fade team">Built by <b>Team Hallucination</b></div>
+      </div>
+    </section>
+
+    <!-- 2 · Problem -->
+    <section class="slide" data-slide>
+      <div class="split">
+        <div class="col-text">
+          <div class="fade kicker">The problem</div>
+          <h2 class="fade">Project knowledge is <span class="amber">scattered</span>.</h2>
+          <ul class="points">
+            <li class="fade"><span class="mk">→</span><span>What the team knows is <b>split across Jira, Drive, transcripts, repos</b>, and Slack — no single place to ask.</span></li>
+            <li class="fade"><span class="mk">→</span><span><b>Why</b> decisions were made goes unrecorded; teams <b>repeat solved mistakes</b>.</span></li>
+            <li class="fade"><span class="mk">→</span><span>Context <b>walks out the door</b> with every departure; new plans hide <b>unspoken assumptions</b>.</span></li>
+            <li class="fade"><span class="mk">→</span><span>Onboarding becomes <b>archaeology</b>. Getting an answer means pinging five people.</span></li>
+          </ul>
+        </div>
+        <div class="col-visual fade">
+          <div class="viz">
+            <svg class="lines" viewBox="0 0 384 352">
+              <g stroke="rgba(255,255,255,0.08)" stroke-width="1.4" stroke-dasharray="4 7" fill="none">
+                <path d="M90 90 L180 150"/><path d="M300 70 L228 158"/><path d="M118 250 L64 182"/>
+                <path d="M300 250 L250 200"/><path d="M170 120 L210 240"/><path d="M250 90 L120 250"/>
+              </g>
+            </svg>
+            <div class="qmark">?</div>
+            <div class="node" style="left:18%;top:20%;transform:translate(-50%,-50%) rotate(-8deg)">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-jira"/></svg></span><span class="src-label">Jira</span></div>
+            </div>
+            <div class="node" style="left:76%;top:15%;transform:translate(-50%,-50%) rotate(9deg)">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-drive"/></svg></span><span class="src-label">Drive</span></div>
+            </div>
+            <div class="node" style="left:26%;top:76%;transform:translate(-50%,-50%) rotate(6deg)">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-github"/></svg></span><span class="src-label">GitHub</span></div>
+            </div>
+            <div class="node" style="left:80%;top:72%;transform:translate(-50%,-50%) rotate(-11deg)">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-talks"/></svg></span><span class="src-label">Transcripts</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 · Solution -->
+    <section class="slide" data-slide>
+      <div class="split">
+        <div class="col-text">
+          <div class="fade kicker">The solution</div>
+          <h2 class="fade">One source of truth<br />for your <span class="amber">whole project</span>.</h2>
+          <ul class="points">
+            <li class="fade"><span class="mk">◆</span><span>Unifies <b>Jira, Drive docs, transcripts, repo docs</b> into one queryable knowledge base, per project.</span></li>
+            <li class="fade"><span class="mk">◆</span><span>Ask anything — get a <b>cited</b> answer sourced straight from your project's own knowledge.</span></li>
+            <li class="fade"><span class="mk">◆</span><span>Surface <b>hidden assumptions</b> and run grounded <b>pre-mortems</b> against past decisions.</span></li>
+            <li class="fade"><span class="mk">◆</span><span><b>Agents</b> act on that knowledge: Daily Scrum, Ticket Tester, PR Security — writing to Jira &amp; GitHub.</span></li>
+          </ul>
+        </div>
+        <div class="col-visual fade">
+          <div class="viz">
+            <svg class="lines" viewBox="0 0 384 352">
+              <g stroke="rgba(251,191,36,0.4)" stroke-width="1.6">
+                <line x1="192" y1="176" x2="192" y2="60"/><line x1="192" y1="176" x2="308" y2="176"/>
+                <line x1="192" y1="176" x2="192" y2="292"/><line x1="192" y1="176" x2="76" y2="176"/>
+              </g>
+            </svg>
+            <div class="core"><span class="core-name">Tacit</span><span class="core-sub">memory</span></div>
+            <div class="node" style="left:50%;top:12%">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-jira"/></svg></span><span class="src-label">Jira</span></div>
+            </div>
+            <div class="node" style="left:84%;top:50%">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-drive"/></svg></span><span class="src-label">Drive</span></div>
+            </div>
+            <div class="node" style="left:50%;top:88%">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-talks"/></svg></span><span class="src-label">Transcripts</span></div>
+            </div>
+            <div class="node" style="left:16%;top:50%">
+              <div class="src"><span class="src-ico"><svg><use href="#ic-github"/></svg></span><span class="src-label">GitHub</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 · Demo -->
+    <section class="slide" data-slide>
+      <div class="fade kicker">Demo</div>
+      <h2 class="fade">Ask your project. Answer <span class="amber">with receipts</span>.</h2>
+      <div class="fade mock">
+        <div class="mock-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="path">NimbusPay <span class="sep">/</span> CRM360 <span class="sep">/</span> Chat</span>
+        </div>
+        <div class="mock-body">
+          <nav class="mock-nav">
+            <div class="nav-item active">Chat</div>
+            <div class="nav-item">Agents</div>
+          </nav>
+          <div class="mock-chat">
+            <div class="bubble-user">Why did we kill the App Marketplace?</div>
+            <div class="bubble-ai">
+              Scrapped after the Sept sync outage — an unreviewed partner plugin caused a data leak. The team chose curated integrations over open publishing. <a class="cite">[JIRA-214]</a> <a class="cite">[postmortem.md]</a>
+              <div class="chips"><span class="chip mem">Memory</span></div>
+            </div>
+            <div class="bubble-user">Pre-mortem: reopen it, no manual review.</div>
+            <div class="bubble-ai">
+              ⚠ Repeats the failure that killed it. Same unreviewed-plugin path → data-leak risk. Add mandatory review + sandbox.
+              <div class="chips"><span class="chip fore">Foresight</span><span class="chip dec">Decisions</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 · Chat -->
+    <section class="slide" data-slide>
+      <div class="fade kicker">Chat · one thread, auto-routed</div>
+      <h2 class="fade">Ask anything. It <span class="amber">routes itself</span>.</h2>
+      <div class="fade caps">
+        <div class="cap c-mem">
+          <div class="cap-head"><span class="cap-title">Memory</span><span class="cap-tag">streamed · cited</span></div>
+          <div class="cap-desc">Answers <b>why</b> a decision was made, grounded in your history — every claim backed by source citations.</div>
+          <div class="cap-slash">/memory</div>
+        </div>
+        <div class="cap c-fore">
+          <div class="cap-head"><span class="cap-title">Foresight</span><span class="cap-tag">streamed · cited</span></div>
+          <div class="cap-desc">Runs a grounded <b>pre-mortem</b> on a plan and warns when it repeats a past failure.</div>
+          <div class="cap-slash">/foresight</div>
+        </div>
+        <div class="cap c-assume">
+          <div class="cap-head"><span class="cap-title">Assumptions</span><span class="cap-tag">inline cards</span></div>
+          <div class="cap-desc">Extracts the <b>unspoken assumptions</b> hidden in a proposal, one card each.</div>
+          <div class="cap-slash">/assumptions</div>
+        </div>
+        <div class="cap c-dec">
+          <div class="cap-head"><span class="cap-title">Decisions</span><span class="cap-tag">inline cards</span></div>
+          <div class="cap-desc">Surfaces the <b>living record</b> of what the team decided, and why.</div>
+          <div class="cap-slash">/decisions</div>
+        </div>
+        <div class="cap c-cap">
+          <div class="cap-head"><span class="cap-title">Capture</span><span class="cap-tag">confirm card</span></div>
+          <div class="cap-desc">Logs a <b>new decision or fact</b> — with owner — from a single sentence into memory.</div>
+          <div class="cap-slash">/capture</div>
+        </div>
+        <div class="cap c-int">
+          <div class="cap-head"><span class="cap-title">Interview</span><span class="cap-tag">Q&amp;A bubbles</span></div>
+          <div class="cap-desc">Actively <b>asks questions</b> to capture knowledge that was never written down.</div>
+          <div class="cap-slash">/interview</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 · Agents -->
+    <section class="slide" data-slide>
+      <div class="fade kicker">Agents · autonomous claude&nbsp;-p workers</div>
+      <h2 class="fade">They don't just answer. They <span class="amber">act</span>.</h2>
+      <div class="fade agents">
+        <div class="agent a-test">
+          <span class="badge">On-demand</span>
+          <div class="agent-title">Ticket Tester</div>
+          <div class="agent-desc">Give it a <b>branch + Jira ticket</b>. It reads the acceptance criteria, locates the module, then generates and runs tests and reads the results.</div>
+          <div class="agent-out">→ posts a <b>pass / fail verdict</b> + feedback to Jira</div>
+          <div class="tools"><span class="tool">Read</span><span class="tool">Grep</span><span class="tool">Glob</span><span class="tool">Bash · jest</span></div>
+        </div>
+        <div class="agent a-sec">
+          <span class="badge">Event · PR → main</span>
+          <div class="agent-title">PR Security</div>
+          <div class="agent-desc">When a PR targets main it reads the diff and <b>reasons about vulnerabilities</b> — SQL / command injection, leaked secrets, authz gaps, unsafe deserialization.</div>
+          <div class="agent-out">→ posts a <b>security report</b> as a PR comment</div>
+          <div class="tools"><span class="tool">Read</span><span class="tool">Grep</span><span class="tool">Bash</span><span class="tool">gh</span></div>
+        </div>
+        <div class="agent a-scrum">
+          <span class="badge">Scheduled · daily</span>
+          <div class="agent-title">Daily Scrum</div>
+          <div class="agent-desc">Each morning it reads the latest standup transcript from Drive, reads the repo for context, and maps the discussion to the <b>right Jira tickets</b>.</div>
+          <div class="agent-out">→ posts a <b>progress update</b> per ticket</div>
+          <div class="tools"><span class="tool">Read</span><span class="tool">Grep</span><span class="tool">Drive</span><span class="tool">Jira</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="chrome">
+    <div class="brand"><b>Tacit</b> — one source of truth</div>
+    <div class="dots" id="dots"></div>
+    <div class="right">
+      <div class="count"><span id="cur">1</span> / <span id="total">6</span></div>
+      <div class="navbtns">
+        <button id="prevBtn" aria-label="Previous slide">←</button>
+        <button id="nextBtn" aria-label="Next slide">→</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('[data-slide]'));
+  const dotsWrap = document.getElementById('dots');
+  const curEl = document.getElementById('cur');
+  document.getElementById('total').textContent = slides.length;
+  let i = 0;
+
+  slides.forEach((_, n) => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', 'Go to slide ' + (n + 1));
+    b.addEventListener('click', () => go(n));
+    dotsWrap.appendChild(b);
+  });
+  const dots = Array.from(dotsWrap.children);
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+
+  function go(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    dots.forEach((d, k) => d.classList.toggle('on', k === i));
+    prevBtn.disabled = i === 0;
+    nextBtn.disabled = i === slides.length - 1;
+    curEl.textContent = i + 1;
+    location.hash = i + 1;
+  }
+  function next() { go(i + 1); }
+  function prev() { go(i - 1); }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+  });
+  // click / tap to advance (ignore dot + link clicks)
+  document.getElementById('deck').addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;
+    next();
+  });
+  // touch swipe
+  let tx = 0;
+  addEventListener('touchstart', (e) => tx = e.touches[0].clientX, { passive: true });
+  addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 45) (dx < 0 ? next : prev)();
+  }, { passive: true });
+
+  // wheel / trackpad scroll to move between slides
+  let wheelLock = false;
+  addEventListener('wheel', (e) => {
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (Math.abs(d) < 4 || wheelLock) return;
+    wheelLock = true;
+    setTimeout(() => { wheelLock = false; }, 350);
+    (d > 0 ? next : prev)();
+  }, { passive: true });
+
+  go(parseInt(location.hash.slice(1), 10) - 1 || 0);
+</script>
+<script type="module">
+  // Neuro-noise shader background via paper.design shaders (vanilla, no build step).
+  // To revert: remove the #shader-bg / #shader-veil divs, their CSS, and this script block.
+  import {
+    ShaderMount, neuroNoiseFragmentShader, getShaderColorFromString,
+    defaultPatternSizing, ShaderFitOptions,
+  } from 'https://esm.sh/@paper-design/shaders@0.0.77';
+
+  const bg = document.getElementById('shader-bg');
+  if (bg) {
+    const s = defaultPatternSizing;
+    const uniforms = {
+      u_fit: ShaderFitOptions[s.fit], u_scale: 1, u_rotation: 0,
+      u_originX: s.originX, u_originY: s.originY,
+      u_offsetX: s.offsetX, u_offsetY: s.offsetY,
+      u_worldWidth: s.worldWidth, u_worldHeight: s.worldHeight,
+      u_colorBack: getShaderColorFromString('#070708'),
+      u_colorMid: getShaderColorFromString('#fbbf24'),
+      u_colorFront: getShaderColorFromString('#fde9b8'),
+      u_brightness: 0.9,
+      u_contrast: 0.35,
+    };
+    // args: parentEl, fragmentShader, uniforms, ctxAttribs, speed
+    new ShaderMount(bg, neuroNoiseFragmentShader, uniforms, undefined, 0.6);
+  }
+</script>
+</body>
+</html>
